@@ -67,7 +67,7 @@ dependencies {
     // ML Kit 检测（端侧离线）
     implementation("com.google.mlkit:object-detection:17.0.1")
     implementation("com.google.mlkit:face-detection:16.1.5")
-    implementation("com.google.mlkit:pose-detection:18.0.0-beta5")
+    // 注：未使用 pose-detection，避免其携带的大型依赖（room 等）
 
     // 协程
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
