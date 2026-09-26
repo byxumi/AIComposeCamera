@@ -1,68 +1,94 @@
 package com.aicamera.composition
 
-/**
- * 构图检测与引导的共用数据模型
- *
- * 所有坐标均为归一化 [0,1]，左上角为原点。
- */
-object CompositionModels {
+import android.graphics.RectF
 
-    /**
-     * 单个检测到的主体（像素框由 ML Kit 提供，这里归一化）
-     */
-    data class Subject(
-        val centerX: Float,      // 中心 x [0,1]
-        val centerY: Float,      // 中心 y [0,1]
-        val left: Float,         // 左 [0,1]
-        val top: Float,          // 上 [0,1]
-        val right: Float,        // 右 [0,1]
-        val bottom: Float,       // 下 [0,1]
-        val width: Float,        // 宽 [0,1]
-        val height: Float,       // 高 [0,1]
-        val confidence: Float,   // 置信度 [0,1]
-        val category: String,    // 中文类别：人物/宠物/食物/商品/建筑/其他
-        val label: String = ""   // 原始类别标签（如 person/cat）
-    ) {
-        val areaRatio: Float get() = width * height
-        val aspectRatio: Float get() = if (height > 0f) width / height else 1f
-    }
+/** 检测主体（对象/人脸通用归一化结果，0..1 坐标，以预览画面为基准） */
+data class DetectedSubject(
+    val id: Int,
+    val box: RectF,               // 归一化 [0..1] 坐标
+    val label: String,            // 主体标签（人/宠物/食物…）
+    val confidence: Float,        // 0..1
+    val kind: SubjectKind,
+    val faceFeatures: FaceFeatures? = null
+)
 
-    /**
-     * 一条构图引导
-     */
-    data class Guidance(
-        val message: String,     // 用户可见提示
-        val ruleId: String,      // 规则号，如 CORE_001
-        val priority: Int,       // 11 错误预防 > 10 基础 > 9 核心 > 8 进阶 > 7 场景
-        val style: Style,        // 引导样式（绿色框/黄色框/错误红/文字）
-        val arrowDx: Float = 0f, // 箭头方向：-1 左移 / +1 右移 / 0 不动
-        val arrowDy: Float = 0f  // 箭头方向：-1 上移 / +1 下移 / 0 不动
-    )
+enum class SubjectKind { OBJECT, FACE, POSE }
 
-    enum class Style { PRIMARY, SECONDARY, ERROR, INFO }
+/** 人脸辅助特征（ML Kit Face 检测） */
+data class FaceFeatures(
+    val smilingProbability: Float? = null,
+    val leftEyeOpen: Float? = null,
+    val rightEyeOpen: Float? = null,
+    val headEulerAngleY: Float? = null, // 偏航（左右转）
+    val headEulerAngleZ: Float? = null  // 翻滚（倾斜）
+)
 
-    /**
-     * 整帧构图分析结果
-     */
-    data class Result(
-        val guidances: List<Guidance> = emptyList(),
-        val recommendedBox: RecommendedBox? = null,  // 推荐取景框（归一化）
-        val mainSubject: Subject? = null,
-        val tiltAngle: Float = 0f,   // 倾斜角（度），0=水平
-        val score: Int = 100,        // 0-100 构图分
-        val isPerfect: Boolean = false,
-        val sceneType: String = "auto"
-    )
+/** 姿态关键点（MediaPipe，归一化 0..1/preview 基准） */
+data class PoseLimb(
+    val shoulderMidX: Float,
+    val shoulderMidY: Float,
+    val hipMidX: Float,
+    val hipMidY: Float,
+    val bodyHeight: Float,
+    val visible: Boolean
+)
 
-    /**
-     * 推荐取景框（归一化坐标）
-     */
-    data class RecommendedBox(
-        val left: Float,
-        val top: Float,
-        val right: Float,
-        val bottom: Float,
-        val type: String,
-        val color: Style
-    )
+/** 一次完整分析结果（送给 UI 层） */
+data class AnalysisResult(
+    val subjects: List<DetectedSubject> = emptyList(),
+    val pose: PoseLimb? = null,
+    val timestampMs: Long = 0L
+)
+
+/** 构图引导提示类型 */
+enum class GuidanceType {
+    NONE,
+    HEAD_CROPPED,      // 头被裁切
+    FEET_CROPPED,      // 脚被裁切
+    HORIZON_TILTED,    // 画面倾斜
+    SUBJECT_TOO_SMALL, // 主体过小
+    SUBJECT_TOO_LARGE, // 主体过大
+    TOP_SPACE,         // 头顶留白不足
+    MOVE_LEFT,         // 向右移（主体偏左）
+    MOVE_RIGHT,        // 向左移
+    MOVE_UP,           // 向下移
+    MOVE_DOWN,         // 向上移
+    ZOOM_IN,           // 靠近/放大
+    ZOOM_OUT,          // 后退/缩小
+    ALIGN_THIRDS,      // 对准三分线交叉点
+    EYES_CLOSED,       // 闭眼
+    SMILE,             // 微笑
+    POSE_SHOULDER,     // 肩膀摆正
+    GOOD              // 构图良好
 }
+
+/** 单个引导提示 */
+data class Guidance(
+    val type: GuidanceType,
+    val message: String,
+    val severity: Severity
+)
+
+enum class Severity { INFO, WARN, ERROR, GOOD }
+
+/** 推荐取景框（归一化 0..1） */
+data class Recommendation(
+    val frame: RectF,
+    val moveX: Float,          // -1..1，正=向右
+    val moveY: Float,          // -1..1，正=向下
+    val zoomHint: Float        // >0 建议放大倍数
+)
+
+/** 覆盖层完整状态（驱动 Compose Canvas） */
+data class OverlayState(
+    val gridMode: Int = 1,
+    val subjects: List<DetectedSubject> = emptyList(),
+    val pose: PoseLimb? = null,
+    val guidance: Guidance = Guidance(GuidanceType.NONE, "", Severity.INFO),
+    val recommendation: Recommendation? = null,
+    val score: Int = 0,
+    val scoreEnabled: Boolean = true,
+    val subjectsEnabled: Boolean = true,
+    val horizonDegrees: Float = 0f,
+    val poseEnabled: Boolean = false
+)

@@ -9,15 +9,8 @@
     <!-- 文字 -->
     <color name="neo_text_primary">#F0F0F0</color>
     <color name="neo_text_secondary">#707070</color>
-    <color name="neo_hint">#4A4A4A</color>
     <!-- 引导色 -->
     <color name="guide_good">#4CD964</color>
     <color name="guide_warn">#FFCC00</color>
     <color name="guide_error">#FF453A</color>
-    <color name="scrim">#99000000</color>
-
-    <!-- 白/黑基础 -->
-    <color name="white">#FFFFFF</color>
-    <color name="black">#000000</color>
-    <color name="transparent">#00000000</color>
 </resources>

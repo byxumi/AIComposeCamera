@@ -1,192 +1,116 @@
 package com.aicamera.composition
 
-import com.aicamera.composition.CompositionModels.Guidance
-import com.aicamera.composition.CompositionModels.RecommendedBox
-import com.aicamera.composition.CompositionModels.Result
-import com.aicamera.composition.CompositionModels.Style
-import com.aicamera.composition.CompositionModels.Subject
+import android.graphics.RectF
 import kotlin.math.abs
 
 /**
- * 本地构图规则引擎
+ * 构图规则引擎：
+ * 借鉴 clifftseng/AI-Camera 的「一次只提示一件最重要的事」思路，
+ * 按优先级产出引导，避免信息轰炸。
  *
- * 参考 ai-composition-assistant 的优先级体系：
- *   11 错误预防 > 10 全局基础 > 9 核心构图 > 8 进阶 > 7 场景特定
- *
- * 全部离线、零延迟。输入 ML Kit 检测结果，输出构图引导、推荐取景框与评分。
+ * 优先级：切头/切脚 > 画面倾斜 > 主体过小/过大 > 头顶留白 > 三分线对齐 > 表情细节
  */
 object CompositionRuleEngine {
 
-    // 三分法交叉点（归一化）
-    val CROSS_POINTS = listOf(
-        Pair(0.33f, 0.33f),
-        Pair(0.67f, 0.33f),
-        Pair(0.33f, 0.67f),
-        Pair(0.67f, 0.67f)
-    )
+    private val TAG = "CompositionRuleEngine"
 
-    private const val MIN_SUBJECT_RATIO = 0.05f
-    private const val MAX_SUBJECT_RATIO = 0.90f
-    private const val TILT_TOLERANCE = 5f // 度
+    /** 对单主体产出引导（不裁剪场景下最优主体） */
+    fun evaluate(
+        subject: DetectedSubject,
+        faceFeatures: FaceFeatures?,
+        horizonDegrees: Float,
+        pose: PoseLimb?
+    ): Guidance {
+        val box = subject.box
+        val w = box.width().coerceIn(0f, 1f)
+        val h = box.height().coerceIn(0f, 1f)
+        val cx = (box.left + box.right) / 2f
+        val cy = (box.top + box.bottom) / 2f
 
-    // 主体优先级：人脸/人体 > 宠物 > 食物 > 商品 > 建筑 > 其他
-    private val SUBJECT_PRIORITY = listOf("人物", "宠物", "食物", "商品", "建筑", "其他")
+        // ===== 1. 裁切（优先级最高）=====
+        if (box.top <= 0.02f) {
+            return Guidance(GuidanceType.HEAD_CROPPED, "头部被裁切，向下移动相机", Severity.ERROR)
+        }
+        if (box.bottom >= 0.98f) {
+            return Guidance(GuidanceType.FEET_CROPPED, "脚部被裁切，向上移动相机", Severity.ERROR)
+        }
 
-    /**
-     * 分析一帧的检测结果
-     */
-    fun analyze(
-        subjects: List<Subject>,
-        imageWidth: Int,
-        imageHeight: Int
-    ): Result {
-        if (subjects.isEmpty()) {
-            return Result(
-                guidances = listOf(
-                    Guidance("未检测到主体，请对准拍摄对象", "NONE_001", 0, Style.INFO)
-                ),
-                score = 50,
-                sceneType = "auto"
+        // ===== 2. 倾斜 =====
+        if (abs(horizonDegrees) > 2.5f) {
+            return Guidance(
+                GuidanceType.HORIZON_TILTED,
+                if (horizonDegrees > 0) "画面向右倾斜，请逆时针调整" else "画面向左倾斜，请顺时针调整",
+                Severity.WARN
             )
         }
 
-        val guidances = mutableListOf<Guidance>()
-        val mainSubject = selectMainSubject(subjects)
-
-        // ─── 优先级 11：错误预防 ───
-        // 头/脚被裁切
-        val top = mainSubject.top
-        val bottom = mainSubject.bottom
-        if (top < 0.02f) {
-            guidances += Guidance(
-                "头部被裁切，请向下移动手机", "ERROR_002", 11, Style.ERROR, arrowDy = 1f
-            )
+        // ===== 3. 主体大小 =====
+        if (w < 0.12f || h < 0.16f) {
+            return Guidance(GuidanceType.SUBJECT_TOO_SMALL, "主体太小，靠近一点或放大", Severity.WARN)
         }
-        if (bottom > 0.98f) {
-            guidances += Guidance(
-                "脚部被裁切，请向上移动手机", "ERROR_002", 11, Style.ERROR, arrowDy = -1f
-            )
+        if (w > 0.92f || h > 0.95f) {
+            return Guidance(GuidanceType.SUBJECT_TOO_LARGE, "主体太大，后退一点或缩小", Severity.WARN)
         }
 
-        // 主体过小/过大
-        if (mainSubject.areaRatio < MIN_SUBJECT_RATIO) {
-            guidances += Guidance(
-                "主体太小，请靠近或放大", "ERROR_004", 11, Style.SECONDARY
-            )
-        } else if (mainSubject.areaRatio > MAX_SUBJECT_RATIO) {
-            guidances += Guidance(
-                "主体太大，请后退或缩小", "ERROR_004", 11, Style.SECONDARY
-            )
-        }
-
-        // ─── 优先级 10：全局基础（头顶留白） ───
-        if (mainSubject.category in listOf("人物", "宠物") && top < 1f / 6f) {
-            guidances += Guidance(
-                "头顶留白不足，请向下移动", "GLOBAL_003", 10, Style.SECONDARY, arrowDy = 1f
-            )
-        }
-
-        // ─── 优先级 9：核心构图（三分法） ───
-        var recommendedBox: RecommendedBox? = null
-        var arrowX = 0f
-        var arrowY = 0f
-
-        val (closestX, closestY) = findClosestCrossPoint(mainSubject.centerX, mainSubject.centerY)
-        val dx = closestX - mainSubject.centerX
-        val dy = closestY - mainSubject.centerY
-
-        if (abs(dx) > 0.05f || abs(dy) > 0.05f) {
-            val msg = buildList {
-                if (abs(dx) > 0.05f) add(if (dx > 0) "请向右移动" else "请向左移动")
-                if (abs(dy) > 0.05f) add(if (dy > 0) "请向下移动" else "请向上移动")
-            }.joinToString("，")
-
-            guidances += Guidance(
-                "$msg，将主体对准取景框", "CORE_001", 9, Style.PRIMARY,
-                arrowDx = dx.coerceIn(-1f, 1f),
-                arrowDy = dy.coerceIn(-1f, 1f)
-            )
-        }
-
-        // 计算推荐取景框：以最近交叉点为中心，主体尺寸 1.5 倍
-        recommendedBox = buildRecommendedBox(closestX, closestY, mainSubject)
-
-        // ─── 综合评分 ───
-        val score = computeScore(guidances, mainSubject, arrowX, arrowY)
-
-        val isPerfect = guidances.none { it.style == Style.ERROR || it.style == Style.PRIMARY } &&
-            mainSubject.areaRatio in MIN_SUBJECT_RATIO..MAX_SUBJECT_RATIO
-
-        return Result(
-            guidances = guidances,
-            recommendedBox = recommendedBox,
-            mainSubject = mainSubject,
-            score = score,
-            isPerfect = isPerfect,
-            sceneType = detectSceneType(mainSubject)
-        )
-    }
-
-    /** 选择核心主体（按优先级，同类取面积最大） */
-    fun selectMainSubject(subjects: List<Subject>): Subject {
-        return subjects.maxWithOrNull(
-            compareBy<Subject>(
-                { SUBJECT_PRIORITY.indexOf(it.category).let { idx -> if (idx < 0) 99 else idx } },
-                { it.areaRatio }
-            )
-        ) ?: subjects.first()
-    }
-
-    /** 找到最近的交叉点（返回交叉点坐标） */
-    fun findClosestCrossPoint(cx: Float, cy: Float): Pair<Float, Float> {
-        return CROSS_POINTS.minByOrNull { (x, y) -> abs(x - cx) + abs(y - cy) }
-            ?: CROSS_POINTS.first()
-    }
-
-    /** 推荐取景框：以交叉点为中心，主体 1.5 倍大小，约束在画面内 */
-    private fun buildRecommendedBox(
-        cx: Float, cy: Float, subject: Subject
-    ): RecommendedBox {
-        val w = (subject.width * 1.5f).coerceIn(0.2f, 0.9f)
-        val h = (subject.height * 1.5f).coerceIn(0.2f, 0.9f)
-        var left = (cx - w / 2).coerceIn(0.02f, 1f - w - 0.02f)
-        var top = (cy - h / 2).coerceIn(0.02f, 1f - h - 0.02f)
-        // 防溢出
-        left = left.coerceIn(0f, 1f - w)
-        top = top.coerceIn(0f, 1f - h)
-        return RecommendedBox(left, top, left + w, top + h, "thirds", Style.PRIMARY)
-    }
-
-    /** 场景识别（简化：按主体类别） */
-    private fun detectSceneType(subject: Subject): String = when (subject.category) {
-        "人物" -> "portrait"
-        "宠物" -> "pet"
-        "食物" -> "food"
-        "商品" -> "product"
-        "建筑" -> "architecture"
-        else -> "auto"
-    }
-
-    /**
-     * 评分：0-100
-     * 满分 100，按活跃引导扣除：
-     *   ERROR 级每条 -18，PRIMARY 级每条 -8，SECONDARY 级每条 -5，
-     *   主体过小/过大额外 -10；置信度低再按需微调。
-     */
-    fun computeScore(guidances: List<Guidance>, subject: Subject? = null, arrowX: Float = 0f, arrowY: Float = 0f): Int {
-        var score = 100
-        for (g in guidances) {
-            score -= when (g.style) {
-                Style.ERROR -> 18
-                Style.PRIMARY -> 8
-                Style.SECONDARY -> 5
-                Style.INFO -> 2
+        // ===== 4. 头顶留白（人像）=====
+        if (subject.kind == SubjectKind.FACE || subject.kind == SubjectKind.POSE) {
+            val topSpace = box.top
+            if (topSpace < 0.06f) {
+                return Guidance(GuidanceType.TOP_SPACE, "头顶留白不足，向下移动相机", Severity.WARN)
+            }
+            if (topSpace > 0.35f) {
+                return Guidance(GuidanceType.MOVE_UP, "主体偏下，向上移动相机", Severity.WARN)
             }
         }
-        if (subject != null) {
-            if (subject.areaRatio < MIN_SUBJECT_RATIO || subject.areaRatio > MAX_SUBJECT_RATIO) score -= 10
+
+        // ===== 5. 三分线对齐 =====
+        val dx = abs(cx - 1f / 3f).coerceAtMost(abs(cx - 2f / 3f))
+        val dy = abs(cy - 1f / 3f).coerceAtMost(abs(cy - 2f / 3f))
+        if (dx > 0.06f || dy > 0.06f) {
+            return when {
+                dx > 0.08f && cx < 0.45f ->
+                    Guidance(GuidanceType.MOVE_RIGHT, "主体偏左，向右移动相机", Severity.INFO)
+                dx > 0.08f && cx > 0.55f ->
+                    Guidance(GuidanceType.MOVE_LEFT, "主体偏右，向左移动相机", Severity.INFO)
+                dy > 0.08f && cy < 0.45f ->
+                    Guidance(GuidanceType.MOVE_DOWN, "主体偏上，向下移动相机", Severity.INFO)
+                dy > 0.08f && cy > 0.55f ->
+                    Guidance(GuidanceType.MOVE_UP, "主体偏下，向上移动相机", Severity.INFO)
+                else ->
+                    Guidance(GuidanceType.ALIGN_THIRDS, "将主体对准三分线交叉点", Severity.INFO)
+            }
         }
-        if (arrowX != 0f || arrowY != 0f) score -= 0 // 方向提示已含在 PRIMARY 扣分
-        return score.coerceIn(0, 100)
+
+        // ===== 6. 表情/姿态细节 =====
+        val fa = faceFeatures
+        if (fa != null) {
+            fa.leftEyeOpen?.let { le ->
+                fa.rightEyeOpen?.let { re ->
+                    if (le < 0.3f && re < 0.3f) {
+                        return Guidance(GuidanceType.EYES_CLOSED, "眼睛闭上了，请睁眼", Severity.WARN)
+                    }
+                }
+            }
+            fa.smilingProbability?.let {
+                if (it < 0.3f && subject.kind == SubjectKind.FACE) {
+                    return Guidance(GuidanceType.SMILE, "微笑一下效果更好", Severity.INFO)
+                }
+            }
+        }
+
+        // ===== 7. 肩膀摆正（姿态）=====
+        if (pose != null && pose.visible) {
+            // 肩线倾斜度粗略判断（肩中点与髋中点横向偏差）
+            val shoulderHipDx = abs(pose.shoulderMidX - pose.hipMidX)
+            if (shoulderHipDx > 0.12f) {
+                return Guidance(GuidanceType.POSE_SHOULDER, "肩膀倾斜，请摆正身体", Severity.INFO)
+            }
+        }
+
+        return Guidance(GuidanceType.GOOD, "构图很棒！", Severity.GOOD)
     }
+
+    /** 综合所有主体的最佳分类（取最大主体为分析对象） */
+    fun pickBestSubject(subjects: List<DetectedSubject>): DetectedSubject? =
+        subjects.maxByOrNull { it.box.width() * it.box.height() }
 }
