@@ -215,14 +215,14 @@ class CameraManager(
                         ) ?: return@mapNotNull null
                         val category = mapCategory(obj.labels.firstOrNull()?.text)
                         Subject(
-                            centerX = norm.first + norm.third / 2f,
-                            centerY = norm.second + norm.fourth / 2f,
-                            left = norm.first,
-                            top = norm.second,
-                            right = norm.first + norm.third,
-                            bottom = norm.second + norm.fourth,
-                            width = norm.third,
-                            height = norm.fourth,
+                            centerX = norm[0] + norm[2] / 2f,
+                            centerY = norm[1] + norm[3] / 2f,
+                            left = norm[0],
+                            top = norm[1],
+                            right = norm[0] + norm[2],
+                            bottom = norm[1] + norm[3],
+                            width = norm[2],
+                            height = norm[3],
                             confidence = obj.trackingId?.let { 0.9f } ?: (obj.labels.firstOrNull()?.confidence ?: 0.7f),
                             category = category,
                             label = obj.labels.firstOrNull()?.text ?: ""
@@ -254,14 +254,14 @@ class CameraManager(
                             imageProxy.width, imageProxy.height
                         ) ?: return@mapNotNull null
                         Subject(
-                            centerX = norm.first + norm.third / 2f,
-                            centerY = norm.second + norm.fourth / 2f,
-                            left = norm.first,
-                            top = norm.second,
-                            right = norm.first + norm.third,
-                            bottom = norm.second + norm.fourth,
-                            width = norm.third,
-                            height = norm.fourth,
+                            centerX = norm[0] + norm[2] / 2f,
+                            centerY = norm[1] + norm[3] / 2f,
+                            left = norm[0],
+                            top = norm[1],
+                            right = norm[0] + norm[2],
+                            bottom = norm[1] + norm[3],
+                            width = norm[2],
+                            height = norm[3],
                             confidence = 0.95f,
                             category = "人物",
                             label = "face"
@@ -379,8 +379,9 @@ class CameraManager(
 
     fun focusOn(x: Float, y: Float) {
         val cam = camera ?: return
+        val point = previewView.meteringPointFactory.createPoint(x, y)
         val action = FocusMeteringAction.Builder(
-            cam.cameraInfo.meteringPointFactory.createPoint(x, y),
+            point,
             FocusMeteringAction.FLAG_AF
         ).build()
         cam.cameraControl.startFocusAndMetering(action)

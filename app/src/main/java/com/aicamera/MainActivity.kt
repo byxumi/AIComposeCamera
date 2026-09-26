@@ -8,6 +8,7 @@ import android.net.Uri
 import android.os.Bundle
 import android.os.Environment
 import android.provider.MediaStore
+import android.view.MotionEvent
 import android.view.View
 import android.widget.ImageButton
 import android.widget.SeekBar
@@ -178,6 +179,24 @@ class MainActivity : AppCompatActivity() {
             zoomExpanded = !zoomExpanded
             binding.zoomRow.visibility = if (zoomExpanded) View.VISIBLE else View.GONE
             true
+        }
+
+        // 单点对焦（轻触预览区对焦）
+        binding.previewView.setOnTouchListener { _, event ->
+            when (event.action) {
+                MotionEvent.ACTION_DOWN -> {
+                    // 长按 vs 单击：用 down 时间区分，这里简单实现：down 记录，up 时若时间短则对焦
+                    return@setOnTouchListener false // 让系统继续处理长按
+                }
+                MotionEvent.ACTION_UP -> {
+                    val duration = event.eventTime - event.downTime
+                    if (duration < 300) {
+                        cameraManager.focusOn(event.x, event.y)
+                    }
+                    return@setOnTouchListener true
+                }
+                else -> return@setOnTouchListener false
+            }
         }
     }
 
