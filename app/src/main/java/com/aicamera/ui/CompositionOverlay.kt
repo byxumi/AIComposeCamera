@@ -13,6 +13,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
@@ -140,7 +141,7 @@ private fun DrawScope.drawSubjectBox(subject: DetectedSubject) {
         rect.left + 4.dp.toPx(),
         rect.top - 4.dp.toPx(),
         android.graphics.Paint().apply {
-            color = android.graphics.Color.WHITE
+            this.color = android.graphics.Color.WHITE
             textSize = 11.dp.toPx()
             isAntiAlias = true
         }
@@ -199,7 +200,7 @@ private fun DrawScope.drawRecommendation(rec: com.aicamera.composition.Recommend
             size.width / 2f - 30.dp.toPx(),
             size.height * 0.72f,
             android.graphics.Paint().apply {
-                color = ArrowColor.toArgb()
+                this.color = ArrowColor.toArgb()
                 textSize = 14.dp.toPx()
                 isAntiAlias = true
                 textAlign = android.graphics.Paint.Align.CENTER

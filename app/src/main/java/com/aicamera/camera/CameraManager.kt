@@ -40,7 +40,6 @@ class CameraManager(
 
     companion object {
         private const val TAG = "CameraManager"
-        private const val RATIO_4_3 = android.util.Rational(4, 3)
     }
 
     // 对外状态
@@ -135,7 +134,6 @@ class CameraManager(
         ContextCompat.checkSelfPermission(context, android.Manifest.permission.CAMERA) ==
             PackageManager.PERMISSION_GRANTED
 
-    @androidx.annotation.OptIn(androidx.camera.core.ExperimentalCameraXAnnotations::class)
     private fun bindUseCases() {
         val provider = cameraProvider ?: return
         val selector = CameraSelector.Builder()
@@ -184,8 +182,8 @@ class CameraManager(
             _isCameraReady.value = true
             _errorMessage.value = null
             camera?.let { c ->
-                val range = c.zoomState.value?.minZoomRatio ?: 1f
-                val max = c.zoomState.value?.maxZoomRatio ?: 1f
+                val range = c.cameraInfo.zoomState.value?.minZoomRatio ?: 1f
+                val max = c.cameraInfo.zoomState.value?.maxZoomRatio ?: 1f
                 c.cameraControl.setZoomRatio(1f)
                 latestZoomRatio = 1f
             }
@@ -216,7 +214,7 @@ class CameraManager(
 
     fun setZoom(factor: Float) {
         val c = camera ?: return
-        val state = c.zoomState.value ?: return
+        val state = c.cameraInfo.zoomState.value ?: return
         zoomRatio = factor.coerceIn(state.minZoomRatio, state.maxZoomRatio)
         latestZoomRatio = zoomRatio
         _zoom.value = zoomRatio

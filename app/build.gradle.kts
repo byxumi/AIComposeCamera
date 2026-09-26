@@ -73,9 +73,9 @@ dependencies {
     implementation("androidx.camera:camera-lifecycle:$camerax")
     implementation("androidx.camera:camera-view:$camerax")
 
-    // ML Kit 端侧检测（离线）
-    implementation("com.google.mlkit:object-detection:17.0.1")
-    implementation("com.google.mlkit:face-detection:16.1.7")
+    // ML Kit 端侧检测（离线，版本对齐可编译参考实现）
+    implementation("com.google.mlkit:object-detection:17.0.2")
+    implementation("com.google.mlkit:face-detection:16.1.5")
 
     // MediaPipe Pose（可选，模型在 assets）
     implementation("com.google.mediapipe:tasks-vision:0.10.14")

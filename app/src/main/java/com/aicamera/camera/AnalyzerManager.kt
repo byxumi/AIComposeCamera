@@ -52,7 +52,6 @@ class AnalyzerManager(
             .setDetectorMode(ObjectDetectorOptions.STREAM_MODE)
             .enableMultipleObjects()
             .enableClassification()
-            .setMaxPerObjectLabelCount(1)
             .build()
     )
 
@@ -121,23 +120,20 @@ class AnalyzerManager(
                 val results = mutableListOf<DetectedSubject>()
                 var pose: PoseLimb? = null
 
-                // 对象 + 人脸并行检测
-                val objFuture = objectDetector.process(inputImage)
-                val faceFuture = faceDetector.process(inputImage)
-
-                // 对象结果
+                // 对象 + 人脸并行检测（Tasks.await 同步等待，因为我们已在工作线程）
                 try {
-                    val objs = objFuture.get()
+                    val objs = com.google.android.gms.tasks.Tasks.await(
+                        objectDetector.process(inputImage)
+                    )
                     objs.forEach { obj ->
-                        if (obj.trackingId != null && obj.boundingBox != null) {
-                            results += DetectedSubject(
-                                id = obj.trackingId,
-                                box = normalize(obj.boundingBox, imageWidth, imageHeight, rotation),
-                                label = obj.labels.firstOrNull()?.text ?: "对象",
-                                confidence = obj.labels.firstOrNull()?.confidence ?: 1f,
-                                kind = SubjectKind.OBJECT
-                            )
-                        }
+                        val box = obj.boundingBox ?: return@forEach
+                        results += DetectedSubject(
+                            id = obj.trackingId ?: 0,
+                            box = normalize(box, imageWidth, imageHeight, rotation),
+                            label = obj.labels.firstOrNull()?.text ?: "对象",
+                            confidence = obj.labels.firstOrNull()?.confidence ?: 1f,
+                            kind = SubjectKind.OBJECT
+                        )
                     }
                 } catch (e: Exception) {
                     Log.w(TAG, "Object 检测失败: ${e.message}")
@@ -145,24 +141,25 @@ class AnalyzerManager(
 
                 // 人脸结果
                 try {
-                    val faces = faceFuture.get()
+                    val faces = com.google.android.gms.tasks.Tasks.await(
+                        faceDetector.process(inputImage)
+                    )
                     faces.forEach { face ->
-                        if (face.trackingId != null) {
-                            results += DetectedSubject(
-                                id = face.trackingId,
-                                box = normalize(face.boundingBox, imageWidth, imageHeight, rotation),
-                                label = "人",
-                                confidence = 1f,
-                                kind = SubjectKind.FACE,
-                                faceFeatures = FaceFeatures(
-                                    smilingProbability = face.smilingProbability,
-                                    leftEyeOpen = face.leftEyeOpenProbability,
-                                    rightEyeOpen = face.rightEyeOpenProbability,
-                                    headEulerAngleY = face.headEulerAngleY,
-                                    headEulerAngleZ = face.headEulerAngleZ
-                                )
+                        val box = face.boundingBox ?: return@forEach
+                        results += DetectedSubject(
+                            id = face.trackingId ?: 0,
+                            box = normalize(box, imageWidth, imageHeight, rotation),
+                            label = "人",
+                            confidence = 1f,
+                            kind = SubjectKind.FACE,
+                            faceFeatures = FaceFeatures(
+                                smilingProbability = face.smilingProbability,
+                                leftEyeOpen = face.leftEyeOpenProbability,
+                                rightEyeOpen = face.rightEyeOpenProbability,
+                                headEulerAngleY = face.headEulerAngleY,
+                                headEulerAngleZ = face.headEulerAngleZ
                             )
-                        }
+                        )
                     }
                 } catch (e: Exception) {
                     Log.w(TAG, "Face 检测失败: ${e.message}")

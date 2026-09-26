@@ -78,12 +78,10 @@ import com.aicamera.ui.theme.NeoTextPrimary
 import com.aicamera.ui.theme.NeoTextSecondary
 import com.aicamera.viewmodel.CompositionViewModel
 import kotlinx.coroutines.delay
-import androidx.camera.core.ExperimentalCameraXAnnotations
 
 /**
  * 主相机界面：预览 + 覆盖层 + 控制栏。
  */
-@OptIn(ExperimentalCameraXAnnotations::class)
 @Composable
 fun CameraScreen(
     onOpenSettings: () -> Unit,
@@ -103,6 +101,13 @@ fun CameraScreen(
                 PackageManager.PERMISSION_GRANTED
         )
     }
+
+    val bindCamera: () -> Unit = {
+        viewModel.bindCamera(lifecycleOwner) { surfaceProvider ->
+            // Preview 的 SurfaceProvider 由 CameraManager 建立
+        }
+    }
+
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { granted ->
@@ -111,12 +116,6 @@ fun CameraScreen(
     }
 
     var previewView by remember { mutableStateOf<PreviewView?>(null) }
-
-    fun bindCamera() {
-        viewModel.bindCamera(lifecycleOwner) { surfaceProvider ->
-            // Preview 的 SurfaceProvider 由 CameraManager 建立
-        }
-    }
 
     LaunchedEffect(hasPermission) {
         if (hasPermission) bindCamera()
