@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 近黑背景（徕卡风） -->
+    <color name="neo_bg">#0D0D0D</color>
+    <color name="neo_bg_card">#1A1A1A</color>
+    <!-- 唯一强调色：冷青 -->
+    <color name="neo_accent">#5AC8C8</color>
+    <color name="neo_accent_dim">#3A6060</color>
+    <!-- 文字 -->
+    <color name="neo_text_primary">#F0F0F0</color>
+    <color name="neo_text_secondary">#707070</color>
+    <color name="neo_hint">#4A4A4A</color>
+    <!-- 引导色 -->
+    <color name="guide_good">#4CD964</color>
+    <color name="guide_warn">#FFCC00</color>
+    <color name="guide_error">#FF453A</color>
+    <color name="scrim">#99000000</color>
+
+    <!-- 白/黑基础 -->
+    <color name="white">#FFFFFF</color>
+    <color name="black">#000000</color>
+    <color name="transparent">#00000000</color>
+</resources>

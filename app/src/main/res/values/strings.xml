@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">AI 构图相机</string>
+    <string name="settings_title">相机设置</string>
+
+    <!-- 通用 -->
+    <string name="start">开始拍摄</string>
+    <string name="stop">停止</string>
+    <string name="retry">重试</string>
+    <string name="loading">加载中…</string>
+
+    <!-- 权限 -->
+    <string name="permission_camera_rationale">需要相机权限才能使用 AI 构图拍摄</string>
+    <string name="permission_denied">相机权限被拒绝，请在系统设置中开启</string>
+
+    <!-- 主界面 -->
+    <string name="shutter">快门</string>
+    <string name="switch_camera">切换摄像头</string>
+    <string name="flash">闪光灯</string>
+    <string name="flash_on">闪光灯：开</string>
+    <string name="flash_off">闪光灯：关</string>
+    <string name="grid">构图网格</string>
+    <string name="zoom">变焦</string>
+    <string name="settings">设置</string>
+
+    <!-- 构图引导 -->
+    <string name="guide_score">构图</string>
+    <string name="guide_status">引导</string>
+    <string name="assist_on">AI 构图引导已开启</string>
+    <string name="no_subject">未检测到主体，请对准拍摄对象</string>
+    <string name="position_good">构图很棒！</string>
+    <string name="subject_detected">已检测到主体</string>
+    <string name="score_format">%1$d 分</string>
+</resources>
