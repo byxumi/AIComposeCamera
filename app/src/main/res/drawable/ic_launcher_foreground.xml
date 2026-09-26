@@ -14,8 +14,7 @@
     <path
         android:pathData="M30,36 L30,40 M78,36 L78,40 M30,74 L30,78 M78,74 L78,78"
         android:strokeColor="#5AC8C8"
-        android:strokeWidth="3"
-        android:strokeCap="round" />
+        android:strokeWidth="3" />
     <!-- 水平线 -->
     <path
         android:pathData="M30,57 L78,57"
