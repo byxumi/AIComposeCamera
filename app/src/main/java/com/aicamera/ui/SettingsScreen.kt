@@ -3,7 +3,9 @@ package com.aicamera.ui
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -199,7 +201,7 @@ private fun IosSectionTitle(title: String, modifier: Modifier = Modifier) {
 @Composable
 private fun IosGroupedCard(
     modifier: Modifier = Modifier,
-    content: @Composable Column.() -> Unit
+    content: @Composable ColumnScope.() -> Unit
 ) {
     Column(
         modifier = modifier
@@ -216,7 +218,7 @@ private fun IosGroupedCard(
 @Composable
 private fun IosSettingsSection(
     title: String,
-    content: @Composable Column.() -> Unit
+    content: @Composable ColumnScope.() -> Unit
 ) {
     Column(modifier = Modifier.padding(horizontal = 4.dp)) {
         IosSectionTitle(title)
