@@ -143,6 +143,7 @@ class CompositionViewModel(application: Application) : AndroidViewModel(applicat
 
     /** 取景坐标点击对焦 */
     fun onTapToFocus(x: Float, y: Float) {
+        if (!::cameraManager.isInitialized) return
         cameraManager.previewViewRef()?.let { pv ->
             cameraManager.focusAt(pv, x, y)
         }
@@ -298,10 +299,16 @@ class CompositionViewModel(application: Application) : AndroidViewModel(applicat
 
     fun onToastShown() { _toastMessage.value = null }
 
-    // ===== 相机操作转发 =====
-    fun switchCamera() = cameraManager.switchCamera()
-    fun toggleFlash() = cameraManager.toggleFlash()
-    fun setZoomRatio(f: Float) = cameraManager.setZoom(f)
+    // ===== 相机操作转发（带初始化防护，避免未授权/未初始化时崩溃）=====
+    fun switchCamera() {
+        if (::cameraManager.isInitialized) cameraManager.switchCamera()
+    }
+    fun toggleFlash() {
+        if (::cameraManager.isInitialized) cameraManager.toggleFlash()
+    }
+    fun setZoomRatio(f: Float) {
+        if (::cameraManager.isInitialized) cameraManager.setZoom(f)
+    }
 
     // ===== 设置更新 =====
     fun updateGridMode(mode: com.aicamera.settings.GridMode) {

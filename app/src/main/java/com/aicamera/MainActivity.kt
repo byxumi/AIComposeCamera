@@ -15,31 +15,33 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import com.aicamera.ui.CameraScreen
 import com.aicamera.ui.SettingsScreen
-import com.aicamera.ui.theme.NeoAccent
-import com.aicamera.ui.theme.NeoBackground
-import com.aicamera.ui.theme.NeoBackgroundCard
-import com.aicamera.ui.theme.NeoTextPrimary
-import com.aicamera.ui.theme.NeoTextSecondary
+import com.aicamera.ui.theme.IosBlue
+import com.aicamera.ui.theme.IosGray
+import com.aicamera.ui.theme.IosSystemBackground
+import com.aicamera.ui.theme.IosSystemLabel
+import com.aicamera.ui.theme.IosSystemSecondaryGroupedBackground
+import com.aicamera.ui.theme.IosSystemSecondaryLabel
 
 class MainActivity : ComponentActivity() {
 
-    private val darkScheme = darkColorScheme(
-        primary = NeoAccent,
-        onPrimary = NeoBackground,
-        primaryContainer = NeoBackgroundCard,
-        secondary = NeoAccent,
-        background = NeoBackground,
-        surface = NeoBackgroundCard,
-        onBackground = NeoTextPrimary,
-        onSurface = NeoTextPrimary,
-        onSurfaceVariant = NeoTextSecondary
+    // iOS 深色 ColorScheme（贴近苹果设计语言）
+    private val iosDarkScheme = darkColorScheme(
+        primary = IosBlue,
+        onPrimary = IosSystemBackground,
+        primaryContainer = IosSystemSecondaryGroupedBackground,
+        secondary = IosGray,
+        background = IosSystemBackground,
+        surface = IosSystemSecondaryGroupedBackground,
+        onBackground = IosSystemLabel,
+        onSurface = IosSystemLabel,
+        onSurfaceVariant = IosSystemSecondaryLabel
     )
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
-            MaterialTheme(colorScheme = darkScheme) {
+            MaterialTheme(colorScheme = iosDarkScheme) {
                 AppRoot()
             }
         }
