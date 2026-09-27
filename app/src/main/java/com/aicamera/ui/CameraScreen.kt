@@ -215,7 +215,7 @@ fun CameraScreen(
 
         // ── 模式提示文案（mola：对准目标提示）──
         if (overlayState.aiAssistActive && overlayState.aiTarget != null) {
-            val t = overlayState.aiTarget
+            val t = overlayState.aiTarget!!
             AiGuideBubble(
                 text = if (t.reached) "✓ 已对准，构图很棒！" else t.label,
                 reached = t.reached,

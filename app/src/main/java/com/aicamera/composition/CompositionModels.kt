@@ -134,8 +134,8 @@ enum class FilterStyle(val label: String) {
  * - reached 是否已对准（构图达标）
  */
 data class AiTarget(
-    val cx: Float,
-    val cy: Float,
+    val cx: Float = 0.5f,
+    val cy: Float = 0.5f,
     val radiusNormalized: Float = 0.12f,
     val moveX: Float = 0f,
     val moveY: Float = 0f,
