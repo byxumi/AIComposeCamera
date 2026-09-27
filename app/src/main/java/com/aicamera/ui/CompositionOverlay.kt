@@ -62,7 +62,72 @@ fun CompositionOverlay(
             state.recommendation?.let { rec ->
                 drawRecommendation(rec)
             }
+
+            // 6. AI 目标圆圈（mola「AI 辅助」核心）
+            state.aiTarget?.let { target ->
+                drawAiTarget(target)
+            }
         }
+    }
+}
+
+/**
+ * AI 目标圆圈（mola 一比一）：
+ * - 黄色圆圈 → 主体对准它
+ * - 绿色 = 已对准
+ * - 虚线圆环 + 移动方向箭头 + 中心点
+ */
+private fun DrawScope.drawAiTarget(target: com.aicamera.composition.AiTarget) {
+    val cx = target.cx * size.width
+    val cy = target.cy * size.height
+    val radius = target.radiusNormalized * size.width
+    val color = if (target.reached) GuideGood else GuideWarn.copy(alpha = 0.95f)
+
+    // 外圈（虚线感：用两个同心圆近似）
+    drawCircle(
+        color = color.copy(alpha = 0.35f),
+        radius = radius,
+        center = Offset(cx, cy),
+        style = Stroke(width = 2.dp.toPx())
+    )
+    drawCircle(
+        color = color,
+        radius = radius * 0.82f,
+        center = Offset(cx, cy),
+        style = Stroke(width = 1.5.dp.toPx())
+    )
+
+    // 中心十字参考
+    val crossColor = color.copy(alpha = 0.8f)
+    drawLine(crossColor, Offset(cx - 10.dp.toPx(), cy), Offset(cx - 4.dp.toPx(), cy), strokeWidth = 1.5.dp.toPx())
+    drawLine(crossColor, Offset(cx + 4.dp.toPx(), cy), Offset(cx + 10.dp.toPx(), cy), strokeWidth = 1.5.dp.toPx())
+    drawLine(crossColor, Offset(cx, cy - 10.dp.toPx()), Offset(cx, cy - 4.dp.toPx()), strokeWidth = 1.5.dp.toPx())
+    drawLine(crossColor, Offset(cx, cy + 4.dp.toPx()), Offset(cx, cy + 10.dp.toPx()), strokeWidth = 1.5.dp.toPx())
+
+    // 移动方向箭头（主体不在圈内时）
+    if (!target.reached && (abs(target.moveX) > 0.05f || abs(target.moveY) > 0.05f)) {
+        val len = 30.dp.toPx()
+        val start = Offset(cx, cy)
+        val end = Offset(
+            cx + target.moveX.coerceIn(-1f, 1f) * len,
+            cy + target.moveY.coerceIn(-1f, 1f) * len
+        )
+        drawArrow(start, end, ArrowColor)
+    }
+
+    // 已对准提示
+    if (target.reached) {
+        drawContext.canvas.nativeCanvas.drawText(
+            "✓ 已对准",
+            cx - 26.dp.toPx(),
+            cy - radius - 8.dp.toPx(),
+            android.graphics.Paint().apply {
+                this.color = GuideGood.toArgb()
+                textSize = 13.dp.toPx()
+                isAntiAlias = true
+                textAlign = android.graphics.Paint.Align.CENTER
+            }
+        )
     }
 }
 

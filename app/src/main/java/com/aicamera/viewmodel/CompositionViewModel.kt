@@ -16,6 +16,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.aicamera.camera.AnalyzerManager
 import com.aicamera.camera.CameraManager
+import com.aicamera.composition.AiGuideEngine
 import com.aicamera.composition.AnalysisResult
 import com.aicamera.composition.AutoShutterEngine
 import com.aicamera.composition.CompositionRuleEngine
@@ -60,6 +61,14 @@ class CompositionViewModel(application: Application) : AndroidViewModel(applicat
     private val framer = FramingBoxEngine
     private val debounce = DebounceTracker(requiredFrames = 6)
     private val autoShutter = AutoShutterEngine()
+    private val aiGuide = AiGuideEngine
+
+    // ── mola 复刻状态 ──
+    private var currentMode = com.aicamera.composition.ShootingMode.AUTO
+    private var currentFilter = com.aicamera.composition.FilterStyle.NONE
+    private var aiAssistActive = false
+    private var aiPhotographerPhase = com.aicamera.composition.AiPhase.IDLE
+    private var aiPromptText = ""
 
     // 水平仪
     private var sensorManager: SensorManager? = null
@@ -175,7 +184,14 @@ class CompositionViewModel(application: Application) : AndroidViewModel(applicat
                 gridMode = curSettings.gridMode.value,
                 scoreEnabled = curSettings.showScore,
                 subjectsEnabled = curSettings.showSubjects,
-                poseEnabled = curSettings.poseGuidance
+                poseEnabled = curSettings.poseGuidance,
+                shootingMode = currentMode,
+                filterStyle = currentFilter,
+                aiAssistActive = aiAssistActive,
+                aiTarget = if (aiAssistActive) aiGuide.createTarget(currentMode, null, 1080f, 1920f) else null,
+                aiPhotographer = photographerState(),
+                guideSteps = guideStepsFor(currentMode, hasSubject = false),
+                selectedSubjectId = null
             )
             _overlayState.value = state
             debounce.reset()
@@ -218,6 +234,16 @@ class CompositionViewModel(application: Application) : AndroidViewModel(applicat
 
         val shownGuidance = if (showGuidance) guidance else Guidance(GuidanceType.NONE, "", Severity.INFO)
 
+        // ── AI 辅助：生成目标圆圈（mola「AI 辅助」核心）──
+        val aiTarget = if (aiAssistActive && aiPhotographerPhase == com.aicamera.composition.AiPhase.GUIDING) {
+            aiGuide.createTarget(currentMode, best.box, 1080f, 1920f)
+        } else null
+
+        // AI 目标已对准时，自动触发快门（mola「对准目标提示，跟着节奏完成拍摄」）
+        if (aiAssistActive && aiTarget != null && aiTarget.reached && curSettings.autoShutter) {
+            // 由自动快门处理
+        }
+
         val newState = OverlayState(
             gridMode = curSettings.gridMode.value,
             subjects = subjects,
@@ -228,9 +254,123 @@ class CompositionViewModel(application: Application) : AndroidViewModel(applicat
             scoreEnabled = curSettings.showScore,
             subjectsEnabled = curSettings.showSubjects,
             horizonDegrees = _horizonDegrees,
-            poseEnabled = curSettings.poseGuidance
+            poseEnabled = curSettings.poseGuidance,
+            shootingMode = currentMode,
+            filterStyle = currentFilter,
+            aiAssistActive = aiAssistActive,
+            aiTarget = aiTarget,
+            aiPhotographer = photographerState(),
+            guideSteps = guideStepsFor(currentMode, hasSubject = true),
+            selectedSubjectId = null
         )
         _overlayState.value = newState
+    }
+
+    /** 当前 AI 摄影师状态（供覆盖层/UI 显示） */
+    private fun photographerState(): com.aicamera.composition.AiPhotographerState? =
+        if (aiPhotographerPhase == com.aicamera.composition.AiPhase.IDLE) null
+        else com.aicamera.composition.AiPhotographerState(
+            phase = aiPhotographerPhase,
+            userPrompt = aiPromptText,
+            suggestionText = if (aiPhotographerPhase == com.aicamera.composition.AiPhase.PLAN_READY ||
+                aiPhotographerPhase == com.aicamera.composition.AiPhase.GUIDING ||
+                aiPhotographerPhase == com.aicamera.composition.AiPhase.READY_SHOOT
+            ) aiGuide.buildPlanText(currentMode, aiPromptText) else "",
+            thinking = aiPhotographerPhase == com.aicamera.composition.AiPhase.ANALYZING
+        )
+
+    /** 分步引导列表 */
+    private fun guideStepsFor(mode: com.aicamera.composition.ShootingMode, hasSubject: Boolean): List<com.aicamera.composition.GuideStep> {
+        if (aiPhotographerPhase != com.aicamera.composition.AiPhase.GUIDING &&
+            aiPhotographerPhase != com.aicamera.composition.AiPhase.READY_SHOOT
+        ) return emptyList()
+        val target = try {
+            aiGuide.createTarget(mode, if (hasSubject) latestAnalysis.subjects.maxByOrNull { it.box.width() * it.box.height() }?.box else null, 1080f, 1920f)
+        } catch (_: Exception) {
+            com.aicamera.composition.AiTarget()
+        }
+        return aiGuide.buildGuideSteps(mode, hasSubject, target)
+    }
+
+    // ═══════════════ mola 复刻操作 ═══════════════
+
+    /** 切换拍摄模式 */
+    fun selectMode(mode: com.aicamera.composition.ShootingMode) {
+        currentMode = mode
+        // 镜头/滤镜相关模式提示
+        when (mode) {
+            com.aicamera.composition.ShootingMode.NIGHT -> _toastMessage.value = "夜景模式：低噪点长曝光"
+            com.aicamera.composition.ShootingMode.PORTRAIT -> _toastMessage.value = "人像模式：主体对准右上三分点"
+            com.aicamera.composition.ShootingMode.FOOD -> _toastMessage.value = "美食模式：45° 俯拍更佳"
+            com.aicamera.composition.ShootingMode.LANDSCAPE -> _toastMessage.value = "风景模式：地平线在下三分之一"
+            com.aicamera.composition.ShootingMode.VIDEO -> _toastMessage.value = "视频模式"
+            else -> _toastMessage.value = "自动模式"
+        }
+        if (aiPhotographerPhase != com.aicamera.composition.AiPhase.IDLE) {
+            aiPhotographerPhase = com.aicamera.composition.AiPhase.PLAN_READY
+        }
+    }
+
+    /** 切换滤镜 */
+    fun selectFilter(f: com.aicamera.composition.FilterStyle) {
+        currentFilter = f
+    }
+
+    /** 开启/关闭 AI 辅助（底部按钮） */
+    fun toggleAiAssist() {
+        aiAssistActive = !aiAssistActive
+        if (aiAssistActive) {
+            aiPhotographerPhase = com.aicamera.composition.AiPhase.GUIDING
+            _toastMessage.value = "AI 辅助开启：自动识别主体，跟着圆圈移动手机"
+        } else {
+            aiPhotographerPhase = com.aicamera.composition.AiPhase.IDLE
+        }
+    }
+
+    /** 打开 AI 摄影师（右下角笑脸） */
+    fun openAiPhotographer() {
+        if (aiPhotographerPhase == com.aicamera.composition.AiPhase.IDLE) {
+            aiPhotographerPhase = com.aicamera.composition.AiPhase.WELCOME
+            _toastMessage.value = "欢迎来到 AI 摄影师～告诉我你想拍什么"
+        }
+    }
+
+    /** 提交 AI 拍摄意图 → 模拟分析 → 生成方案（mola：AI 思考中 → 定制方案） */
+    fun submitAiPrompt(prompt: String) {
+        aiPromptText = prompt
+        aiPhotographerPhase = com.aicamera.composition.AiPhase.ANALYZING
+        _toastMessage.value = "AI 正在思考…"
+        viewModelScope.launch {
+            // 模拟 1.2s 分析（真实实现接云端大模型）
+            kotlinx.coroutines.delay(1200)
+            aiPhotographerPhase = com.aicamera.composition.AiPhase.PLAN_READY
+            _toastMessage.value = "方案已生成，开始分步引导"
+            // 短暂后进入引导
+            kotlinx.coroutines.delay(600)
+            aiPhotographerPhase = com.aicamera.composition.AiPhase.GUIDING
+            aiAssistActive = true
+        }
+    }
+
+    /** 关闭 AI 摄影师 */
+    fun closeAiPhotographer() {
+        aiPhotographerPhase = com.aicamera.composition.AiPhase.IDLE
+        aiAssistActive = false
+    }
+
+    /** 手动选主体（AI 框错时，mola：识别中点预览下方「手动选主体」） */
+    fun manualSelectSubject(x: Float, y: Float) {
+        val picked = aiGuide.pickAtPoint(latestAnalysis.subjects, x, y)
+        if (picked != null) {
+            _toastMessage.value = "已锁定主体：${picked.label}"
+        }
+        // 简化：记录选择坐标，构图引擎会以最大主体为准
+    }
+
+    /** 重置 AI 引导（mola：「AI退出但保留视频构图」） */
+    fun resetAiGuide() {
+        aiAssistActive = false
+        aiPhotographerPhase = com.aicamera.composition.AiPhase.IDLE
     }
 
     /** 构造惩罚项：按引导类型扣分 */

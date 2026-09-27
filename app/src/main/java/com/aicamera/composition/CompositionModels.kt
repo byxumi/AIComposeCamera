@@ -90,5 +90,83 @@ data class OverlayState(
     val scoreEnabled: Boolean = true,
     val subjectsEnabled: Boolean = true,
     val horizonDegrees: Float = 0f,
-    val poseEnabled: Boolean = false
+    val poseEnabled: Boolean = false,
+    // ── AI 辅助 / AI 摄影师（mola 一比一）──
+    val shootingMode: ShootingMode = ShootingMode.AUTO,
+    val filterStyle: FilterStyle = FilterStyle.NONE,
+    val aiAssistActive: Boolean = false,
+    val aiTarget: AiTarget? = null,               // 目标圆圈（AI 辅助/构图引导）
+    val aiPhotographer: AiPhotographerState? = null, // AI 摄影师对话
+    val guideSteps: List<GuideStep> = emptyList(),   // AI 分步引导
+    val selectedSubjectId: Int? = null,           // 手动选主体
+    val showTargetReticle: Boolean = false        // 目标圆圈高亮
+)
+
+/** 拍摄模式（mola 底部模式栏） */
+enum class ShootingMode(val label: String, val icon: String) {
+    AUTO("自动", "A"),
+    PORTRAIT("人像", "人"),
+    NIGHT("夜景", "夜"),
+    FOOD("美食", "食"),
+    LANDSCAPE("风景", "景"),
+    VIDEO("视频", "▶")
+}
+
+/** 滤镜风格（mola 滤镜轮，简化版） */
+enum class FilterStyle(val label: String) {
+    NONE("原图"),
+    FILM("胶片"),
+    FRESH("清新"),
+    VINTAGE("复古"),
+    BW("黑白"),
+    WARM("暖阳"),
+    COOL("冷调"),
+    FOOD_WARM("美食暖"),
+    PORTRAIT_SOFT("人像柔"),
+    NIGHT_CITY("夜城")
+}
+
+/**
+ * AI 目标圆圈：AI 辅助模式下的构图目标（归一化 0..1）。
+ * - cx/cy 目标中心
+ * - radiusPx 屏幕上目标圆圈半径（由 UI 层换算）
+ * - moveX/moveY 期望移动方向（-1..1）
+ * - reached 是否已对准（构图达标）
+ */
+data class AiTarget(
+    val cx: Float,
+    val cy: Float,
+    val radiusNormalized: Float = 0.12f,
+    val moveX: Float = 0f,
+    val moveY: Float = 0f,
+    val reached: Boolean = false,
+    val label: String = "目标"
+)
+
+/** AI 摄影师状态机（mola 右下角笑脸对话 → 定制方案 → 分步引导） */
+data class AiPhotographerState(
+    val phase: AiPhase = AiPhase.IDLE,
+    val userPrompt: String = "",
+    val suggestionText: String = "",
+    val thinking: Boolean = false
+)
+
+enum class AiPhase {
+    IDLE,               // 未启用
+    WELCOME,            // 欢迎语（"欢迎来到 AI 摄影师，告诉我你想拍什么"）
+    PROMPT_INPUT,       // 用户输入拍摄意图
+    ANALYZING,          // AI 思考中…（分析画面）
+    PLAN_READY,         // 已生成定制拍摄方案（多步骤）
+    GUIDING,            // 分步引导中
+    READY_SHOOT,        // 构图达标，可拍摄
+    ERROR               // 请求失败
+}
+
+/** AI 分步引导步骤（mola「AI 推荐的引导步骤」） */
+data class GuideStep(
+    val index: Int,
+    val title: String,
+    val instruction: String,
+    val done: Boolean = false,
+    val target: AiTarget? = null
 )
