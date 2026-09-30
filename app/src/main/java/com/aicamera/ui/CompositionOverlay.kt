@@ -29,6 +29,7 @@ import com.aicamera.ui.theme.FrameColor
 import com.aicamera.ui.theme.GuideError
 import com.aicamera.ui.theme.GuideGood
 import com.aicamera.ui.theme.GuideWarn
+import com.aicamera.ui.theme.IosBlue
 import com.aicamera.ui.theme.NeoAccent
 import com.aicamera.ui.theme.NeoTextPrimary
 import com.aicamera.ui.theme.NeoTextSecondary
@@ -44,11 +45,15 @@ fun CompositionOverlay(
 ) {
     Box(modifier = modifier.fillMaxSize()) {
         Canvas(modifier = Modifier.fillMaxSize()) {
-            // 1. 网格
-            drawGrid(state.gridMode)
+            // 1. 网格（尊重开关）
+            if (state.showGridLines) {
+                drawGrid(state.gridMode)
+            }
 
-            // 2. 水平仪
-            drawHorizon(state.horizonDegrees)
+            // 2. 水平仪（尊重开关）
+            if (state.showHorizonLine) {
+                drawHorizon(state.horizonDegrees)
+            }
 
             // 3. 主体框
             if (state.subjectsEnabled) {
@@ -67,8 +72,38 @@ fun CompositionOverlay(
             state.aiTarget?.let { target ->
                 drawAiTarget(target)
             }
+
+            // 7. 锁定主体高亮（手动选主体后）
+            state.lockedSubjectId?.let { lockedId ->
+                state.subjects.firstOrNull { it.id == lockedId }?.let { locked ->
+                    drawLockedSubject(locked)
+                }
+            }
         }
     }
+}
+
+/** 锁定主体高亮框（mola「手动选主体」后突出显示） */
+private fun DrawScope.drawLockedSubject(subject: com.aicamera.composition.DetectedSubject) {
+    val rect = normalizedRect(subject.box)
+    val color = IosBlue
+    drawRoundRect(
+        color = color.copy(alpha = 0.95f),
+        topLeft = Offset(rect.left, rect.top),
+        size = Size(rect.width, rect.height),
+        cornerRadius = CornerRadius(4.dp.toPx()),
+        style = Stroke(width = 3.dp.toPx())
+    )
+    drawContext.canvas.nativeCanvas.drawText(
+        "已锁定",
+        rect.right - 40.dp.toPx(),
+        rect.top - 6.dp.toPx(),
+        android.graphics.Paint().apply {
+            this.color = IosBlue.toArgb()
+            textSize = 12.dp.toPx()
+            isAntiAlias = true
+        }
+    )
 }
 
 /**

@@ -37,6 +37,8 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.FlashOff
 import androidx.compose.material.icons.filled.FlashOn
+import androidx.compose.material.icons.filled.FlashAuto
+import androidx.compose.material.icons.filled.Portrait
 import androidx.compose.material.icons.filled.GridOn
 import androidx.compose.material.icons.filled.GridOff
 import androidx.compose.material.icons.filled.Groups
@@ -182,7 +184,16 @@ fun CameraScreen(
                     .fillMaxSize()
                     .pointerInput(Unit) {
                         detectTapGestures { offset ->
-                            viewModel.onTapToFocus(offset.x, offset.y)
+                            // AI 辅助/引导模式下点击预览 = 手动选主体（mola「手动选主体」）
+                            if (overlayState.aiAssistActive || overlayState.aiPhase != AiPhase.IDLE) {
+                                val w = size.width
+                                val h = size.height
+                                if (w > 0 && h > 0) {
+                                    viewModel.manualSelectSubject(offset.x / w, offset.y / h)
+                                }
+                            } else {
+                                viewModel.onTapToFocus(offset.x, offset.y)
+                            }
                         }
                     }
             )
@@ -195,7 +206,21 @@ fun CameraScreen(
 
         // ── 顶部工具栏 ──
         TopToolbar(
-            onToggleFlash = { viewModel.toggleFlash() },
+            aspectRatio = overlayState.aspectRatio.label,
+            frameStyle = overlayState.frameStyle.label,
+            timerSeconds = overlayState.timerSeconds,
+            flashLabel = overlayState.flashState.label,
+            onCycleAspect = { viewModel.selectAspect(
+                when (overlayState.aspectRatio) {
+                    com.aicamera.composition.AspectRatio.RATIO_4_3 -> com.aicamera.composition.AspectRatio.RATIO_16_9
+                    com.aicamera.composition.AspectRatio.RATIO_16_9 -> com.aicamera.composition.AspectRatio.RATIO_1_1
+                    com.aicamera.composition.AspectRatio.RATIO_1_1 -> com.aicamera.composition.AspectRatio.FULL
+                    com.aicamera.composition.AspectRatio.FULL -> com.aicamera.composition.AspectRatio.RATIO_4_3
+                }
+            ) },
+            onCycleFlash = { viewModel.cycleFlash() },
+            onCycleTimer = { viewModel.cycleTimer() },
+            onCycleFrame = { viewModel.cycleFrameStyle() },
             onOpenSettings = onOpenSettings,
             modifier = Modifier
                 .align(Alignment.TopCenter)
@@ -311,6 +336,8 @@ fun CameraScreen(
             },
             onSubmit = { prompt ->
                 viewModel.submitAiPrompt(prompt)
+                // 提交后关闭对话，引导在取景界面显示（mola 流程）
+                showAiDialog = false
             }
         )
     }
@@ -320,7 +347,14 @@ fun CameraScreen(
 
 @Composable
 private fun TopToolbar(
-    onToggleFlash: () -> Unit,
+    aspectRatio: String,
+    frameStyle: String,
+    timerSeconds: Int,
+    flashLabel: String,
+    onCycleAspect: () -> Unit,
+    onCycleFlash: () -> Unit,
+    onCycleTimer: () -> Unit,
+    onCycleFrame: () -> Unit,
     onOpenSettings: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -329,19 +363,39 @@ private fun TopToolbar(
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // 左：画幅（4:3 默认）+ 闪光
+        // 左：画幅 + 闪光
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            IosToolButton(onClick = {}, tintColor = Color.White) {
-                Text("4:3", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+            IosToolButton(onClick = onCycleAspect, tintColor = Color.White) {
+                Text(aspectRatio, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
             }
-            IosToolButton(onClick = onToggleFlash, tintColor = Color.White) {
-                Icon(Icons.Filled.FlashOff, "闪光灯", tint = Color.White, modifier = Modifier.size(20.dp))
+            IosToolButton(onClick = onCycleFlash, tintColor = Color.White) {
+                Icon(
+                    imageVector = when (flashLabel) {
+                        "开" -> Icons.Filled.FlashOn
+                        "自动" -> Icons.Filled.FlashAuto
+                        else -> Icons.Filled.FlashOff
+                    },
+                    contentDescription = "闪光灯",
+                    tint = Color.White,
+                    modifier = Modifier.size(20.dp)
+                )
             }
         }
-        // 右：定时 + 设置
+        // 右：相框 + 定时 + 设置
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            IosToolButton(onClick = {}, tintColor = Color.White) {
-                Icon(Icons.Filled.Timer, "定时", tint = Color.White, modifier = Modifier.size(20.dp))
+            IosToolButton(onClick = onCycleFrame, tintColor = Color.White) {
+                if (frameStyle == "无相框") {
+                    Icon(Icons.Filled.Portrait, "相框", tint = Color.White, modifier = Modifier.size(20.dp))
+                } else {
+                    Text(if (frameStyle.length > 2) frameStyle.take(2) else frameStyle, color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+            IosToolButton(onClick = onCycleTimer, tintColor = Color.White) {
+                if (timerSeconds > 0) {
+                    Text("$timerSeconds", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                } else {
+                    Icon(Icons.Filled.Timer, "定时", tint = Color.White, modifier = Modifier.size(20.dp))
+                }
             }
             IosToolButton(onClick = onOpenSettings, tintColor = Color.White) {
                 Icon(Icons.Filled.Settings, "设置", tint = Color.White, modifier = Modifier.size(20.dp))
@@ -390,6 +444,32 @@ private fun MolaBottomPanel(
         }
 
         Spacer(Modifier.height(6.dp))
+
+        // ── 变焦滑杆（mola：数码变焦）──
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "%.1fx".format(zoomRatio),
+                color = Color.White.copy(alpha = 0.8f),
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(start = 4.dp)
+            )
+            IosSlider(
+                value = zoomRatio,
+                onValueChange = onZoomChange,
+                modifier = Modifier.weight(1f).padding(horizontal = 8.dp),
+                valueRange = 1f..5f
+            )
+            Text(
+                text = "5x",
+                color = Color.White.copy(alpha = 0.6f),
+                fontSize = 11.sp,
+                modifier = Modifier.padding(end = 4.dp)
+            )
+        }
 
         // ── 中间行：AI 辅助（左） + 快门（中） + 笑脸/AI摄影师（右）──
         Row(

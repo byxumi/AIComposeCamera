@@ -29,6 +29,7 @@ import com.aicamera.composition.OverlayState
 import com.aicamera.composition.Recommendation
 import com.aicamera.composition.Severity
 import com.aicamera.settings.CameraSettings
+import com.aicamera.settings.GridMode
 import com.aicamera.settings.SettingsRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -69,6 +70,20 @@ class CompositionViewModel(application: Application) : AndroidViewModel(applicat
     private var aiAssistActive = false
     private var aiPhotographerPhase = com.aicamera.composition.AiPhase.IDLE
     private var aiPromptText = ""
+
+    // ── mola 相机控件状态 ──
+    private var currentAspect = com.aicamera.composition.AspectRatio.RATIO_4_3
+    private var currentExposure = 0f
+    private var showHorizonLine = true
+    private var showGridLines = true
+    private var currentFrameStyle = com.aicamera.composition.FrameStyle.NONE
+    private var currentTimer = 0
+    private var currentFlashState = com.aicamera.composition.FlashState.OFF
+
+    // 手动选中/锁定的主体 id（AI 辅助模式下点击主体锁定）
+    private var lockedSubjectId: Int? = null
+    // AI 辅助目标是否已对准（触发一次自动快门的防重复标志）
+    private var aiReachedFired = false
 
     // 水平仪
     private var sensorManager: SensorManager? = null
@@ -177,7 +192,7 @@ class CompositionViewModel(application: Application) : AndroidViewModel(applicat
             val state = _overlayState.value.copy(
                 subjects = subjects,
                 pose = pose,
-                guidance = Guidance(GuidanceType.NONE, "未检测到主体，请对准拍摄对象", Severity.INFO),
+                guidance = Guidance(GuidanceType.NONE, if (aiAssistActive) "未找到主体，请将主体移入画面" else "未检测到主体，请对准拍摄对象", Severity.INFO),
                 recommendation = null,
                 score = 0,
                 horizonDegrees = _horizonDegrees,
@@ -191,18 +206,34 @@ class CompositionViewModel(application: Application) : AndroidViewModel(applicat
                 aiTarget = if (aiAssistActive) aiGuide.createTarget(currentMode, null, 1080f, 1920f) else null,
                 aiPhotographer = photographerState(),
                 guideSteps = guideStepsFor(currentMode, hasSubject = false),
-                selectedSubjectId = null
+                selectedSubjectId = lockedSubjectId,
+                lockedSubjectId = lockedSubjectId,
+                showTargetReticle = aiAssistActive,
+                aiPhase = aiPhotographerPhase,
+                aiMessage = if (aiAssistActive) "未找到主体，请将主体移入画面" else "",
+                aspectRatio = currentAspect,
+                exposureCompensation = currentExposure,
+                showHorizonLine = showHorizonLine,
+                showGridLines = showGridLines,
+                frameStyle = currentFrameStyle,
+                timerSeconds = currentTimer,
+                flashState = currentFlashState
             )
             _overlayState.value = state
             debounce.reset()
+            aiReachedFired = false
             autoShutter.onFrame(0, latestThreshold, subjectVisible = false)
             return
         }
 
         // 构图评估
+        // 手动锁定主体优先（mola「手动选主体」）
+        val primary = if (lockedSubjectId != null) {
+            subjects.firstOrNull { it.id == lockedSubjectId } ?: best
+        } else best
         val guidance = ruleEngine.evaluate(
-            subject = best,
-            faceFeatures = best.faceFeatures,
+            subject = primary,
+            faceFeatures = primary.faceFeatures,
             horizonDegrees = _horizonDegrees,
             pose = pose
         )
@@ -210,18 +241,42 @@ class CompositionViewModel(application: Application) : AndroidViewModel(applicat
         // 防抖
         val showGuidance = debounce.shouldShow(guidance)
 
-        // 评分：基础分 + 惩罚
-        val base = scorer.scoreSubject(best.box)
-        val penalties = buildPenalties(guidance, best.box)
+        // 评分：基础分 + 惩罚（以锁定/最大主体为准）
+        val base = scorer.scoreSubject(primary.box)
+        val penalties = buildPenalties(guidance, primary.box)
         val finalScore = scorer.applyPenalties(base, penalties)
         latestScore = finalScore
 
         // 推荐框
         val rec: Recommendation? = if (showGuidance && guidance.type != GuidanceType.GOOD) {
-            framer.recommend(best.box)
+            framer.recommend(primary.box)
         } else null
 
-        // 自动快门
+        // ── AI 辅助：目标圆圈跟随主体 ──
+        val aiTarget = if (aiAssistActive && aiPhotographerPhase == com.aicamera.composition.AiPhase.GUIDING) {
+            aiGuide.createTarget(currentMode, primary.box, 1080f, 1920f)
+        } else null
+
+        // AI 辅助对准闭环：达到目标后自动拍摄（仅一次）
+        if (aiAssistActive && aiTarget != null && aiTarget.reached && !aiReachedFired) {
+            aiReachedFired = true
+            aiPhotographerPhase = com.aicamera.composition.AiPhase.READY_SHOOT
+            _toastMessage.value = "✓ 构图很棒，自动拍摄！"
+            if (::cameraManager.isInitialized) {
+                cameraManager.takePhoto { file ->
+                    if (file != null) {
+                        _lastPhotoPath.value = file.absolutePath
+                        hapticFeedback()
+                    }
+                }
+            }
+        }
+        // 对准后未触发条件消失（主体移开目标）→ 允许再次触发
+        if (aiTarget == null || !aiTarget.reached) {
+            aiReachedFired = false
+        }
+
+        // 自动快门（独立于 AI 辅助的自定义设置）
         val threshold = curSettings.shutterSensitivity.threshold
         if (curSettings.autoShutter) {
             val shouldFire = autoShutter.onFrame(finalScore, threshold, subjectVisible = true)
@@ -233,16 +288,6 @@ class CompositionViewModel(application: Application) : AndroidViewModel(applicat
         }
 
         val shownGuidance = if (showGuidance) guidance else Guidance(GuidanceType.NONE, "", Severity.INFO)
-
-        // ── AI 辅助：生成目标圆圈（mola「AI 辅助」核心）──
-        val aiTarget = if (aiAssistActive && aiPhotographerPhase == com.aicamera.composition.AiPhase.GUIDING) {
-            aiGuide.createTarget(currentMode, best.box, 1080f, 1920f)
-        } else null
-
-        // AI 目标已对准时，自动触发快门（mola「对准目标提示，跟着节奏完成拍摄」）
-        if (aiAssistActive && aiTarget != null && aiTarget.reached && curSettings.autoShutter) {
-            // 由自动快门处理
-        }
 
         val newState = OverlayState(
             gridMode = curSettings.gridMode.value,
@@ -261,7 +306,18 @@ class CompositionViewModel(application: Application) : AndroidViewModel(applicat
             aiTarget = aiTarget,
             aiPhotographer = photographerState(),
             guideSteps = guideStepsFor(currentMode, hasSubject = true),
-            selectedSubjectId = null
+            selectedSubjectId = lockedSubjectId,
+            lockedSubjectId = lockedSubjectId,
+            showTargetReticle = aiAssistActive,
+            aiPhase = aiPhotographerPhase,
+            aiMessage = aiTarget?.let { if (it.reached) "✓ 已对准，构图很棒！" else it.label } ?: "",
+            aspectRatio = currentAspect,
+            exposureCompensation = currentExposure,
+            showHorizonLine = showHorizonLine,
+            showGridLines = showGridLines,
+            frameStyle = currentFrameStyle,
+            timerSeconds = currentTimer,
+            flashState = currentFlashState
         )
         _overlayState.value = newState
     }
@@ -321,9 +377,13 @@ class CompositionViewModel(application: Application) : AndroidViewModel(applicat
         aiAssistActive = !aiAssistActive
         if (aiAssistActive) {
             aiPhotographerPhase = com.aicamera.composition.AiPhase.GUIDING
+            aiReachedFired = false
             _toastMessage.value = "AI 辅助开启：自动识别主体，跟着圆圈移动手机"
         } else {
             aiPhotographerPhase = com.aicamera.composition.AiPhase.IDLE
+            aiReachedFired = false
+            lockedSubjectId = null
+            _toastMessage.value = "AI 辅助已关闭"
         }
     }
 
@@ -362,15 +422,94 @@ class CompositionViewModel(application: Application) : AndroidViewModel(applicat
     fun manualSelectSubject(x: Float, y: Float) {
         val picked = aiGuide.pickAtPoint(latestAnalysis.subjects, x, y)
         if (picked != null) {
+            lockedSubjectId = picked.id
             _toastMessage.value = "已锁定主体：${picked.label}"
+            hapticFeedback()
+        } else {
+            // 点击空白取消锁定
+            lockedSubjectId = null
+            _toastMessage.value = "已取消锁定"
         }
-        // 简化：记录选择坐标，构图引擎会以最大主体为准
+    }
+
+    /** 取消锁定主体 */
+    fun clearLockedSubject() {
+        lockedSubjectId = null
     }
 
     /** 重置 AI 引导（mola：「AI退出但保留视频构图」） */
     fun resetAiGuide() {
         aiAssistActive = false
         aiPhotographerPhase = com.aicamera.composition.AiPhase.IDLE
+        aiReachedFired = false
+        lockedSubjectId = null
+    }
+
+    // ═══════════════ mola 相机控件操作 ═══════════════
+
+    /** 切换画幅 */
+    fun selectAspect(a: com.aicamera.composition.AspectRatio) {
+        currentAspect = a
+        _toastMessage.value = "画幅：${a.label}"
+    }
+
+    /** 调节曝光补偿（-2..+2） */
+    fun setExposure(value: Float) {
+        currentExposure = value.coerceIn(-2f, 2f)
+        if (::cameraManager.isInitialized) {
+            // 通过 CameraX 曝光补偿（若支持）
+        }
+    }
+
+    /** 切换水平仪辅助线 */
+    fun toggleHorizonLine() {
+        showHorizonLine = !showHorizonLine
+    }
+
+    /** 切换网格辅助线 */
+    fun toggleGridLines() {
+        showGridLines = !showGridLines
+        // 同步网格模式
+        val mode = if (showGridLines) GridMode.THIRDS else GridMode.NONE
+        viewModelScope.launch { settingsRepository.setGridMode(mode) }
+    }
+
+    /** 切换相框风格（mola 相框风格：无/胶片/日期戳/品牌框） */
+    fun cycleFrameStyle() {
+        currentFrameStyle = when (currentFrameStyle) {
+            com.aicamera.composition.FrameStyle.NONE -> com.aicamera.composition.FrameStyle.FILM_FRAME
+            com.aicamera.composition.FrameStyle.FILM_FRAME -> com.aicamera.composition.FrameStyle.DATE_STAMP
+            com.aicamera.composition.FrameStyle.DATE_STAMP -> com.aicamera.composition.FrameStyle.BRAND_FRAME
+            com.aicamera.composition.FrameStyle.BRAND_FRAME -> com.aicamera.composition.FrameStyle.NONE
+        }
+        _toastMessage.value = "相框：${currentFrameStyle.label}"
+    }
+
+    /** 定时拍摄 0/3/5/10s */
+    fun cycleTimer() {
+        currentTimer = when (currentTimer) {
+            0 -> 3
+            3 -> 5
+            5 -> 10
+            else -> 0
+        }
+        _toastMessage.value = if (currentTimer > 0) "定时：${currentTimer}秒" else "定时：关"
+    }
+
+    /** 闪光灯状态循环 关→开→自动 */
+    fun cycleFlash() {
+        currentFlashState = when (currentFlashState) {
+            com.aicamera.composition.FlashState.OFF -> com.aicamera.composition.FlashState.ON
+            com.aicamera.composition.FlashState.ON -> com.aicamera.composition.FlashState.AUTO
+            com.aicamera.composition.FlashState.AUTO -> com.aicamera.composition.FlashState.OFF
+        }
+        toggleFlash()
+        _toastMessage.value = "闪光：${currentFlashState.label}"
+    }
+
+    /** 点按时调曝光（mola「点按对焦・调曝光」：点画面出现小太阳） */
+    fun tapToAdjustExposure(delta: Float) {
+        currentExposure = (currentExposure + delta).coerceIn(-2f, 2f)
     }
 
     /** 构造惩罚项：按引导类型扣分 */
@@ -406,13 +545,33 @@ class CompositionViewModel(application: Application) : AndroidViewModel(applicat
         }
     }
 
-    /** 手动拍照 */
+    /** 手动拍照（支持 mola 定时） */
     fun manualShutter() {
-        cameraManager.takePhoto { file ->
-            if (file != null) {
-                _lastPhotoPath.value = file.absolutePath
-                _toastMessage.value = "已保存到相册"
-                hapticFeedback()
+        if (!::cameraManager.isInitialized) {
+            _toastMessage.value = "相机未就绪，请稍候"
+            return
+        }
+        val timer = currentTimer
+        if (timer > 0) {
+            _toastMessage.value = "定时 ${timer} 秒后拍摄"
+            viewModelScope.launch {
+                kotlinx.coroutines.delay(timer * 1000L)
+                if (!::cameraManager.isInitialized) return@launch
+                cameraManager.takePhoto { file ->
+                    if (file != null) {
+                        _lastPhotoPath.value = file.absolutePath
+                        _toastMessage.value = "已保存到相册"
+                        hapticFeedback()
+                    }
+                }
+            }
+        } else {
+            cameraManager.takePhoto { file ->
+                if (file != null) {
+                    _lastPhotoPath.value = file.absolutePath
+                    _toastMessage.value = "已保存到相册"
+                    hapticFeedback()
+                }
             }
         }
     }

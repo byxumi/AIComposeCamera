@@ -99,8 +99,41 @@ data class OverlayState(
     val aiPhotographer: AiPhotographerState? = null, // AI 摄影师对话
     val guideSteps: List<GuideStep> = emptyList(),   // AI 分步引导
     val selectedSubjectId: Int? = null,           // 手动选主体
-    val showTargetReticle: Boolean = false        // 目标圆圈高亮
+    val lockedSubjectId: Int? = null,             // 锁定主体（手动选主体后构图以此为准）
+    val showTargetReticle: Boolean = false,       // 目标圆圈高亮
+    val aiPhase: AiPhase = AiPhase.IDLE,
+    val aiMessage: String = "",                   // AI 辅助当前提示文案
+    // ── mola 相机控件状态 ──
+    val aspectRatio: AspectRatio = AspectRatio.RATIO_4_3,
+    val exposureCompensation: Float = 0f,         // 曝光补偿 -2..+2
+    val showHorizonLine: Boolean = true,          // 水平仪辅助线
+    val showGridLines: Boolean = true,            // 网格辅助线
+    val shutterSound: Boolean = true,
+    val frameStyle: FrameStyle = FrameStyle.NONE, // 相框风格
+    val timerSeconds: Int = 0,                    // 定时 0/3/5/10
+    val flashState: FlashState = FlashState.OFF
 )
+
+/** 画幅比例（mola 顶部画幅切换） */
+enum class AspectRatio(val label: String) {
+    RATIO_4_3("4:3"),
+    RATIO_16_9("16:9"),
+    RATIO_1_1("1:1"),
+    FULL("全屏")
+}
+
+/** 闪光灯状态（mola 顶部） */
+enum class FlashState(val label: String) {
+    OFF("关"), ON("开"), AUTO("自动")
+}
+
+/** 相框风格（mola 相框风格） */
+enum class FrameStyle(val label: String) {
+    NONE("无相框"),
+    FILM_FRAME("胶片框"),
+    DATE_STAMP("日期戳"),
+    BRAND_FRAME("MOLA 品牌框")
+}
 
 /** 拍摄模式（mola 底部模式栏） */
 enum class ShootingMode(val label: String, val icon: String) {
