@@ -38,6 +38,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Cameraswitch
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.Face
@@ -320,6 +321,9 @@ fun CameraScreen(
                     text = "调色盘",
                     selected = overlay.lutFilterId != null || showPalette,
                     onClick = { showPalette = !showPalette },
+                    tint = Color(0xFFC8924F),
+                    icon = Icons.Filled.Palette,
+                    iconSize = 13.dp,
                     modifier = Modifier
                 )
                 CamShutter(
@@ -341,12 +345,15 @@ fun CameraScreen(
                     modifier = Modifier.size(80.dp)
                 )
                 CamTextButton(
-                    text = if (overlay.aiPhase != AiPhase.IDLE) "AI辅助" else "AI辅助",
+                    text = "AI辅助",
                     selected = overlay.aiPhase != AiPhase.IDLE,
                     onClick = {
                         showAiDialog = true
                         viewModel.openAiPhotographer()
                     },
+                    tint = Color(0xFFC8924F),
+                    icon = Icons.Filled.AutoAwesome,
+                    iconSize = 13.dp,
                     modifier = Modifier
                 )
             }
