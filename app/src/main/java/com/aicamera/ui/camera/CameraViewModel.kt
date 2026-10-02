@@ -107,6 +107,11 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
     val recordElapsedMs: StateFlow<Long> = _recordElapsedMs.asStateFlow()
     private var recordTimerJob: Job? = null
 
+    // mola 自动拍摄中央倒计时 HUD (rj0.java:1478-1496: 96sp 数字 + 保持不动 + 即将自动拍摄 + 金褐进度环)
+    private val _autoShootCountdown = MutableStateFlow(0)
+    val autoShootCountdown: StateFlow<Int> = _autoShootCountdown.asStateFlow()
+    private var countdownJob: Job? = null
+
     private val _cameraReady = MutableStateFlow(false)
     val cameraReady: StateFlow<Boolean> = _cameraReady.asStateFlow()
 
@@ -264,14 +269,20 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
             aiGuide.createTarget(currentMode, primary.box, 1080f, 1920f)
         } else null
 
-        // 对准 → 自动拍（mola rj0.java:1589: "构图已就绪，约 3 秒后快门自动释放"，3 秒倒计时）
+        // 对准 → 自动拍（mola rj0.java:1478-1496 中央倒计时 HUD + 1589 "构图已就绪，约 3 秒后快门自动释放"）
         if (aiAssistActive && aiTarget != null && aiTarget.reached && !aiReachedFired) {
             aiReachedFired = true
             aiPhase = AiPhase.READY_SHOOT
             _toastMessage.value = "构图已就绪，约 3 秒后快门自动释放"
             readyShootJob?.cancel()
+            countdownJob?.cancel()
             readyShootJob = viewModelScope.launch {
-                delay(3000)
+                // 倒计时 3 → 1 显示
+                for (i in 3 downTo 1) {
+                    _autoShootCountdown.value = i
+                    delay(1000)
+                    if (i == 1) _autoShootCountdown.value = 0
+                }
                 if (aiPhase == AiPhase.READY_SHOOT && aiTarget.reached) {
                     _toastMessage.value = "✓ 构图很棒，自动拍摄！"
                     takePhoto(auto = true)
@@ -607,6 +618,9 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
     fun closeAiPhotographer() {
         readyShootJob?.cancel()
         readyShootJob = null
+        countdownJob?.cancel()
+        countdownJob = null
+        _autoShootCountdown.value = 0
         aiPhase = AiPhase.IDLE
         aiAssistActive = false
         aiGuideSteps = emptyList()

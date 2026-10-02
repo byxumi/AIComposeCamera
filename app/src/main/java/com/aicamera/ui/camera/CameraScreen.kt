@@ -47,6 +47,7 @@ import androidx.compose.material.icons.filled.Mood
 import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -465,6 +466,30 @@ fun CameraScreen(
                         }
                     }
                 }
+            }
+        }
+
+        // ── mola 自动拍摄中央倒计时 HUD (rj0.java:1478-1496) ──
+        val countdown = viewModel.autoShootCountdown.collectAsState().value
+        if (countdown > 0) {
+            Column(
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .clip(RoundedCornerShape(24.dp))
+                    .background(CamColors.Black.copy(alpha = 0.55f))
+                    .padding(horizontal = 32.dp, vertical = 24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    text = countdown.toString(),
+                    color = CamColors.White.copy(alpha = 0.95f),
+                    style = MaterialTheme.typography.displayLarge.copy(fontSize = 96.sp),
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(Modifier.height(2.dp))
+                Text("保持不动", color = CamColors.White, style = CamType.Body.copy(fontSize = 17.sp), fontWeight = FontWeight.Bold)
+                Spacer(Modifier.height(14.dp))
+                Text("即将自动拍摄", color = CamColors.White.copy(alpha = 0.75f), style = CamType.BodyMedium)
             }
         }
 
