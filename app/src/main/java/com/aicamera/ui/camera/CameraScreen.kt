@@ -38,17 +38,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
-import androidx.compose.material.icons.filled.BrightnessHigh
 import androidx.compose.material.icons.filled.Cameraswitch
 import androidx.compose.material.icons.filled.Face
-import androidx.compose.material.icons.filled.FlashAuto
-import androidx.compose.material.icons.filled.FlashOff
-import androidx.compose.material.icons.filled.FlashOn
 import androidx.compose.material.icons.filled.PhotoLibrary
-import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Star
-import androidx.compose.material.icons.filled.Timer
-import androidx.compose.material.icons.outlined.AspectRatio
 import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -250,7 +243,7 @@ fun CameraScreen(
             }
         }
 
-        // ── 顶部工具栏 (mola 顺序): 画幅 / 闪光 / 定时 / 曝光 / 切换 / 设置 ──
+        // ── 顶部工具栏 (mola 真实控件集): 会员 / 镜头标识(点按循环变焦) / 切换 ──
         Row(
             modifier = Modifier
                 .align(Alignment.TopCenter)
@@ -271,7 +264,7 @@ fun CameraScreen(
                     .clickable { onOpenProfile() }
                     .padding(horizontal = 14.dp, vertical = 6.dp)
             )
-            // 镜头标识 (mola: 主摄/超广角/长焦/前摄)
+            // 镜头标识 (mola: 主摄/超广角/长焦/前摄, 点按循环变焦 0.6x→1x→3x)
             Text(
                 text = if (isFront) "前摄" else when {
                     zoom < 0.9f -> "超广角"
@@ -283,44 +276,23 @@ fun CameraScreen(
                 modifier = Modifier
                     .clip(RoundedCornerShape(14.dp))
                     .background(CamColors.Black.copy(alpha = 0.45f))
+                    .clickable {
+                        viewModel.setZoom(
+                            when {
+                                zoom < 0.9f -> 1f
+                                zoom > 1.1f -> 0.6f
+                                else -> 3f
+                            }
+                        )
+                    }
                     .padding(horizontal = 14.dp, vertical = 6.dp)
             )
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            CamIconButton(
-                icon = Icons.Outlined.AspectRatio,
-                onClick = { viewModel.cycleAspect() },
-                contentDescription = overlay.aspectRatio.label
-            )
-            CamIconButton(
-                icon = when (overlay.flashState) {
-                    FlashState.OFF -> Icons.Filled.FlashOff
-                    FlashState.ON -> Icons.Filled.FlashOn
-                    FlashState.AUTO -> Icons.Filled.FlashAuto
-                },
-                onClick = { viewModel.cycleFlash() },
-                contentDescription = "闪光 ${overlay.flashState.label}"
-            )
-            CamIconButton(
-                icon = Icons.Filled.Timer,
-                onClick = { viewModel.cycleTimer() },
-                contentDescription = "定时 ${overlay.timerSeconds}秒"
-            )
-            CamIconButton(
-                icon = Icons.Filled.BrightnessHigh,
-                onClick = { viewModel.adjustExposure(1) },
-                contentDescription = "曝光"
-            )
+            // 切换摄像头 (mola: nk3.u() 图标 + "切换" 文字)
             CamIconButton(
                 icon = Icons.Filled.Cameraswitch,
                 onClick = { viewModel.switchCamera() },
                 contentDescription = "切换摄像头"
             )
-            CamIconButton(
-                icon = Icons.Filled.Settings,
-                onClick = onOpenSettings,
-                contentDescription = "设置"
-            )
-            }
         }
 
         // ── 底部控制区 (mola: 调色盘弹出 + 变焦行 + 快门行 + 模式栏) ──
@@ -332,74 +304,17 @@ fun CameraScreen(
                 .padding(horizontal = 16.dp, vertical = 10.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // 行1: 调色盘(弹出层) + 变焦三摄 + 相框 实况 满血
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(CamShapes.Panel)
-                    .background(CamColors.Frosted),
-                horizontalArrangement = Arrangement.Center,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                CamTextButton(
-                    text = if (overlay.lutFilterId == null) "调色盘" else "调色盘",
-                    selected = overlay.lutFilterId != null || showPalette,
-                    onClick = { showPalette = !showPalette },
-                    modifier = Modifier.padding(horizontal = 2.dp)
-                )
-                Spacer(Modifier.width(8.dp))
-                CamTextButton(
-                    text = "超广角",
-                    selected = zoom < 0.9f,
-                    onClick = { viewModel.setZoom(0.6f) },
-                    modifier = Modifier.padding(horizontal = 2.dp)
-                )
-                CamTextButton(
-                    text = "主摄",
-                    selected = zoom in 0.9f..1.1f,
-                    onClick = { viewModel.setZoom(1f) },
-                    modifier = Modifier.padding(horizontal = 2.dp)
-                )
-                CamTextButton(
-                    text = "长焦",
-                    selected = zoom > 1.1f,
-                    onClick = { viewModel.setZoom(3f) },
-                    modifier = Modifier.padding(horizontal = 2.dp)
-                )
-                Spacer(Modifier.width(6.dp))
-                CamTextButton(
-                    text = if (overlay.frameStyle == FrameStyle.NONE) "相框" else "相框 ${overlay.frameStyle.label}",
-                    selected = overlay.frameStyle != FrameStyle.NONE,
-                    onClick = { viewModel.cycleFrameStyle() },
-                    modifier = Modifier.padding(horizontal = 2.dp)
-                )
-                CamTextButton(
-                    text = "实况",
-                    selected = overlay.livePhotoMode,
-                    onClick = { viewModel.toggleLivePhoto() },
-                    modifier = Modifier.padding(horizontal = 2.dp)
-                )
-                CamTextButton(
-                    text = "满血",
-                    selected = overlay.fullResMode,
-                    onClick = { viewModel.toggleFullRes() },
-                    modifier = Modifier.padding(horizontal = 2.dp)
-                )
-            }
-
-            Spacer(Modifier.height(12.dp))
-
-            // 行2: AI 辅助 / 快门(80dp mola) / AI 摄影师
+            // 快门行 (mola: [调色盘] [快门80dp] [AI辅助], 三摄改由顶部镜头标识循环)
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceEvenly,
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 CamTextButton(
-                    text = "AI 辅助",
-                    selected = overlay.aiAssistActive,
-                    onClick = { viewModel.toggleAiAssist() },
-                    modifier = Modifier.width(84.dp)
+                    text = "调色盘",
+                    selected = overlay.lutFilterId != null || showPalette,
+                    onClick = { showPalette = !showPalette },
+                    modifier = Modifier
                 )
                 CamShutter(
                     isRecording = isRecording,
@@ -419,13 +334,13 @@ fun CameraScreen(
                     modifier = Modifier.size(80.dp)
                 )
                 CamTextButton(
-                    text = if (overlay.aiPhase != AiPhase.IDLE) "AI 摄影师…" else "AI 摄影师",
+                    text = if (overlay.aiPhase != AiPhase.IDLE) "AI辅助" else "AI辅助",
                     selected = overlay.aiPhase != AiPhase.IDLE,
                     onClick = {
                         showAiDialog = true
                         viewModel.openAiPhotographer()
                     },
-                    modifier = Modifier.width(96.dp)
+                    modifier = Modifier
                 )
             }
 
@@ -548,6 +463,32 @@ fun CameraScreen(
                     textAlign = TextAlign.Center,
                     modifier = Modifier.fillMaxWidth()
                 )
+                Spacer(Modifier.height(10.dp))
+                // 二级功能入口 (mola f60 设置面板: 实况/满血/相框, 不污染主界面)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    CamTextButton(
+                        text = "实况",
+                        selected = overlay.livePhotoMode,
+                        onClick = { viewModel.toggleLivePhoto() },
+                        modifier = Modifier.padding(horizontal = 2.dp)
+                    )
+                    CamTextButton(
+                        text = "满血",
+                        selected = overlay.fullResMode,
+                        onClick = { viewModel.toggleFullRes() },
+                        modifier = Modifier.padding(horizontal = 2.dp)
+                    )
+                    CamTextButton(
+                        text = if (overlay.frameStyle == FrameStyle.NONE) "相框" else "相框 ${overlay.frameStyle.label}",
+                        selected = overlay.frameStyle != FrameStyle.NONE,
+                        onClick = { viewModel.cycleFrameStyle() },
+                        modifier = Modifier.padding(horizontal = 2.dp)
+                    )
+                }
             }
         }
 
