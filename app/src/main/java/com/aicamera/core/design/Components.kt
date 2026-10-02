@@ -58,6 +58,7 @@ import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.Dp
 import kotlin.math.cos
 import kotlin.math.sin
 
@@ -119,7 +120,7 @@ fun CamIconButton(
     }
 }
 
-/** 文本小按钮 (模式标签 / 滤镜名) — 选中 = 强调色描边 + 20% 强调底 */
+/** 文本小按钮 (模式标签 / 滤镜名) — 选中 = 金色渐变胶囊; 可选前置图标 (mola 模式按钮 = 图标13dp+5dp+文字12sp) */
 @Composable
 fun CamTextButton(
     text: String,
@@ -127,7 +128,9 @@ fun CamTextButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     tint: Color = CamColors.White,
-    compact: Boolean = false
+    compact: Boolean = false,
+    icon: ImageVector? = null,
+    iconSize: Dp = 13.dp
 ) {
     Box(
         modifier = modifier
@@ -148,13 +151,26 @@ fun CamTextButton(
             .padding(horizontal = if (compact) 10.dp else 16.dp, vertical = if (compact) 6.dp else 10.dp),
         contentAlignment = Alignment.Center
     ) {
-        Text(
-            text,
-            color = if (selected) CamColors.Black else tint,
-            style = CamType.BodyMedium,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(5.dp)
+        ) {
+            if (icon != null) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = if (selected) CamColors.Black else tint,
+                    modifier = Modifier.size(iconSize)
+                )
+            }
+            Text(
+                text,
+                color = if (selected) CamColors.Black else tint,
+                style = CamType.BodyMedium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
     }
 }
 

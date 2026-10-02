@@ -39,7 +39,10 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Cameraswitch
+import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.Face
+import androidx.compose.material.icons.filled.JoinInner
+import androidx.compose.material.icons.filled.Mood
 import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.Icon
@@ -77,7 +80,6 @@ import coil.request.ImageRequest
 import com.aicamera.core.design.CamButton
 import com.aicamera.core.design.CamColors
 import com.aicamera.core.design.CamDialog
-import com.aicamera.core.design.CamIconButton
 import com.aicamera.core.design.CamShapes
 import com.aicamera.core.design.CamShutter
 import com.aicamera.core.design.CamTextButton
@@ -94,6 +96,7 @@ import com.aicamera.domain.model.FrameStyle
 import com.aicamera.domain.model.OverlayState
 import com.aicamera.domain.model.ShootingMode
 import com.aicamera.domain.model.SilkFlowMode
+import java.util.Locale
 
 /**
  * v5.2 mola 相机主页 — 按 rj0.java 逐元素复刻。
@@ -243,7 +246,7 @@ fun CameraScreen(
             }
         }
 
-        // ── 顶部工具栏 (mola 真实控件集): 会员 / 镜头标识(点按循环变焦) / 切换 ──
+        // ── 顶部工具栏 (mola 真实控件集): 变焦倍数胶囊 / 镜头标识 / 切换 ──
         Row(
             modifier = Modifier
                 .align(Alignment.TopCenter)
@@ -253,25 +256,10 @@ fun CameraScreen(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // 会员按钮 (mola: 黑底 0xFF3A2E10 + 金色文字)
+            // 变焦倍数 (mola rj0.java:975: String.format(Locale.US,"%.1f×") 色 v22.b=0xFFC8924F 12sp sm1.A; 点按循环变焦 1x→3x→0.6x)
             Text(
-                text = "会员",
-                color = CamColors.AccentLight,
-                style = CamType.BodyMedium,
-                modifier = Modifier
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(Color(0xFF3A2E10))
-                    .clickable { onOpenProfile() }
-                    .padding(horizontal = 14.dp, vertical = 6.dp)
-            )
-            // 镜头标识 (mola: 主摄/超广角/长焦/前摄, 点按循环变焦 0.6x→1x→3x)
-            Text(
-                text = if (isFront) "前摄" else when {
-                    zoom < 0.95f -> "超广角"
-                    zoom >= 1.8f -> "长焦"
-                    else -> "主摄"
-                },
-                color = CamColors.SecondaryText,
+                text = String.format(Locale.US, "%.1f×", zoom),
+                color = Color(0xFFC8924F),
                 style = CamType.BodyMedium,
                 modifier = Modifier
                     .clip(RoundedCornerShape(14.dp))
@@ -287,11 +275,29 @@ fun CameraScreen(
                     }
                     .padding(horizontal = 14.dp, vertical = 6.dp)
             )
-            // 切换摄像头 (mola: nk3.u() 图标 + "切换" 文字)
-            CamIconButton(
-                icon = Icons.Filled.Cameraswitch,
+            // 镜头标识 (mola: 主摄/超广角/长焦/前摄, 阈值 0.95/1.8)
+            Text(
+                text = if (isFront) "前摄" else when {
+                    zoom < 0.95f -> "超广角"
+                    zoom >= 1.8f -> "长焦"
+                    else -> "主摄"
+                },
+                color = CamColors.SecondaryText,
+                style = CamType.BodyMedium,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(CamColors.Black.copy(alpha = 0.45f))
+                    .padding(horizontal = 14.dp, vertical = 6.dp)
+            )
+            // 切换摄像头 (mola rj0: nk3.u() 图标 13dp + 5dp + "切换" 12sp 纯白)
+            CamTextButton(
+                text = "切换",
+                selected = false,
                 onClick = { viewModel.switchCamera() },
-                contentDescription = "切换摄像头"
+                tint = Color.White,
+                compact = true,
+                icon = Icons.Filled.Cameraswitch,
+                iconSize = 13.dp
             )
         }
 
@@ -347,7 +353,7 @@ fun CameraScreen(
 
             Spacer(Modifier.height(10.dp))
 
-            // 行3: 模式栏 (mola: 照片/视频/夜间 + 流光快门子模式)
+            // 行3: 模式栏 (mola: 仅 照片/视频/夜间 + 流光快门子模式; 每按钮 = 图标13dp+5dp+文字12sp, 未选中 v22.b=0xFFC8924F)
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -355,15 +361,22 @@ fun CameraScreen(
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                ShootingMode.entries.forEach { mode ->
+                listOf(
+                    Triple(ShootingMode.AUTO, Icons.Filled.JoinInner, "照片"),     // yt.r() = Filled.JoinInner
+                    Triple(ShootingMode.VIDEO, Icons.Filled.Mood, "视频"),         // fx1.X() = Filled.Mood
+                    Triple(ShootingMode.NIGHT, Icons.Filled.DarkMode, "夜间")       // mu3.z() = Filled.DarkMode
+                ).forEach { (mode, icon, label) ->
                     CamTextButton(
                         text = if (mode == ShootingMode.VIDEO && overlay.silkFlowMode != SilkFlowMode.NONE)
-                            overlay.silkFlowMode.label else mode.label,
+                            overlay.silkFlowMode.label else label,
                         selected = overlay.shootingMode == mode,
                         onClick = {
                             viewModel.selectMode(mode)
                             viewModel.selectSilkFlow(SilkFlowMode.NONE)
                         },
+                        tint = Color(0xFFC8924F),
+                        icon = icon,
+                        iconSize = 13.dp,
                         modifier = Modifier.padding(horizontal = 2.dp)
                     )
                 }
@@ -372,6 +385,7 @@ fun CameraScreen(
                         text = sm.label,
                         selected = overlay.silkFlowMode == sm,
                         onClick = { viewModel.selectSilkFlow(sm) },
+                        tint = Color(0xFFC8924F),
                         modifier = Modifier.padding(horizontal = 2.dp)
                     )
                 }
