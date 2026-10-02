@@ -1,6 +1,6 @@
 # AI 构图相机（AI Compose Camera）
 
-基于 **Kotlin 原生架构 + Jetpack Compose** 的 Android AI 构图相机，对标 mola 相机的操作逻辑与 AI 构图功能（逆向分析 com.shijiexiangxian.mola 后实现），v6.0 = **按 mola 相机 APK 逐元素一比一重建主界面**（rj0.java / wx1.java 精确复刻）：底部导航 52dp 胶囊 + 金分隔线 / 80dp 黑金快门 / 顶部镜头标识 / 调色盘弹出层 / 模式栏金色渐变胶囊，消除「ui 相似但不完全是、界面杂乱差」问题；v5.x 全部 mola 功能（黑金主题 / 151 款 LUT 滤镜 + 收藏与 AI 推荐 / AI 目标圈 / 流光快门 / 实况照片 / 满血像素 / 会员三档 / AI 摄影师三方案）与 Doka 编辑器完整保留。
+基于 **Kotlin 原生架构 + Jetpack Compose** 的 Android AI 构图相机，对标 mola 相机的操作逻辑与 AI 构图功能（逆向分析 com.shijiexiangxian.mola 后实现），v6.0 = **按 mola 相机 APK 逐元素一比一重建主界面**（rj0.java / wx1.java 精确复刻）：底部导航 52dp 胶囊 + 金分隔线 / 80dp 黑金快门 / 顶部镜头标识 / 调色盘弹出层 / 模式栏金色渐变胶囊；v6.1 = **主界面彻底精简，对齐 mola 真实控件集**（以 rj0.java 按钮文案全集核对，移除相框/实况/满血/定时/闪光/画幅/设置/AI摄影师等自创按钮，实况满血相框移入调色盘二级入口，消除「杂乱差」）；v5.x 全部 mola 功能（黑金主题 / 151 款 LUT 滤镜 + 收藏与 AI 推荐 / AI 目标圈 / 流光快门 / 实况照片 / 满血像素 / 会员三档 / AI 摄影师三方案）与 Doka 编辑器完整保留。
 
 ## ✨ 功能
 
@@ -60,7 +60,7 @@ APK 输出：`app/build/outputs/apk/debug/app-debug.apk`
 
 最新 Release（镜像加速下载）：
 ```text
-https://ghfast.top/https://github.com/byxumi/AIComposeCamera/releases/download/v6.0.1/app-debug.apk
+https://ghfast.top/https://github.com/byxumi/AIComposeCamera/releases/download/v6.1.0/app-debug.apk
 ```
 
 ## 📁 结构
@@ -97,4 +97,4 @@ app/src/main/java/com/aicamera/
 - 全部检测与构图分析**本地离线**，无需联网、无需 API key（云端 AiProvider 接口已预留）
 - 参考项目：ai-composition-assistant、clifftseng/AI-Camera、compose-ai、CameraQ、mola（产品形态）
 - 真机兼容性：CameraX 已封装，适配主流机型（已在 vivo V2329A 目标机型验证）
-- 版本历史：v2.0 功能闭环 → v2.1 iOS 二改 → v2.2 mola 复刻 → v2.3 重构闭环 → v3.0 全面重写 → v4.0 taste 重构 → v5.0 mola UI + Doka 编辑器 + 可用性修复 → v5.1 直接逆向 mola 一比一复刻（151 LUT/黑金/流光/实况/满血）→ v5.2 + 收藏/AI 推荐滤镜/会员对话框/AI 摄影师三方案 → **v6.0 主界面逐元素一比一重建（底栏/快门/镜头标识/调色盘/模式渐变）** → **v6.0.1 顶部会员按钮 + 调色盘模式感知提示**
+- 版本历史：v2.0 功能闭环 → v2.1 iOS 二改 → v2.2 mola 复刻 → v2.3 重构闭环 → v3.0 全面重写 → v4.0 taste 重构 → v5.0 mola UI + Doka 编辑器 + 可用性修复 → v5.1 直接逆向 mola 一比一复刻（151 LUT/黑金/流光/实况/满血）→ v5.2 + 收藏/AI 推荐滤镜/会员对话框/AI 摄影师三方案 → **v6.0 主界面逐元素一比一重建（底栏/快门/镜头标识/调色盘/模式渐变）** → **v6.0.1 顶部会员按钮 + 调色盘模式感知提示** → **v6.1 主界面彻底精简对齐 mola 真实控件集（移除自创按钮，消除杂乱）**
