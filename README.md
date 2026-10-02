@@ -1,6 +1,6 @@
 # AI 构图相机（AI Compose Camera）
 
-基于 **Kotlin 原生架构 + Jetpack Compose** 的 Android AI 构图相机，对标 mola 相机的操作逻辑与 AI 构图功能（逆向分析 com.shijiexiangxian.mola 后实现），v4.0 按 **taste 原则全面重构**（专业暗色相机设计语言）。
+基于 **Kotlin 原生架构 + Jetpack Compose** 的 Android AI 构图相机，对标 mola 相机的操作逻辑与 AI 构图功能（逆向分析 com.shijiexiangxian.mola 后实现），v5.0 修复 v4 可用性问题 + **mola 风格相机 UI** + **Doka 全功能编辑器**。
 
 ## ✨ 功能
 
@@ -12,6 +12,11 @@
   - 底部「AI 辅助」一键开启自动构图
 - 📐 **拍摄模式**：自动 / 人像 / 夜景 / 美食 / 风景 / 视频，各模式构图规则不同
 - 🎨 **滤镜轮**：原图 / 胶片 / 清新 / 复古 / 黑白 / 暖阳 / 冷调 / 美食暖 / 人像柔 / 夜城（编辑器实时预览 + 保存）
+- 🖼️ **Doka 全功能编辑器**（相册点按进入）：
+  - ✂️ 裁剪（四角手柄 + 遮罩）、🔄 旋转 90°、↔️ 水平/垂直翻转
+  - 🎨 滤镜实时预览、亮度 / 对比度 / 饱和度 / 锐化 / 色温 / 暗角 6 项调整滑块
+  - 🔤 文字叠加（拖动/删除）、😀 贴纸 6 种（心/星/笑脸/相机/闪光/勾）、💧 水印（日期/品牌）
+  - ↩️ 撤销 8 步、保存到相册、分享
 - ⚡ **端侧 AI 检测（离线）**：ML Kit 对象检测 + 人脸检测，识别人物/宠物/食物/商品
 - 🧍 姿态引导（可选）：MediaPipe Pose Landmarker
 - 📐 构图引导：三分法 / 中心网格、推荐取景框 + 方向箭头、水平仪、实时评分 0-100
@@ -55,7 +60,7 @@ APK 输出：`app/build/outputs/apk/debug/app-debug.apk`
 
 最新 Release（镜像加速下载）：
 ```text
-https://ghfast.top/https://github.com/byxumi/AIComposeCamera/releases/download/v4.0.0/app-debug.apk
+https://ghfast.top/https://github.com/byxumi/AIComposeCamera/releases/download/v5.0.0/app-debug.apk
 ```
 
 ## 📁 结构
@@ -81,7 +86,8 @@ app/src/main/java/com/aicamera/
 └── ui/
     ├── camera/                    # CameraScreen / CameraOverlay / CameraViewModel
     ├── gallery/GalleryScreen.kt   # 2 列网格 + 全屏大图
-    ├── editor/EditorScreen.kt     # 滤镜编辑器
+    ├── editor/EditorScreen.kt     # Doka 全功能编辑器（裁剪/滤镜/文字/贴纸/水印）
+    ├── editor/EditorViewModel.kt  # 编辑器状态（撤销 8 步 / 合成导出）
     ├── settings/SettingsScreen.kt # 分组设置
     └── navigation/AppNavHost.kt   # 导航路由
 ```
@@ -91,4 +97,4 @@ app/src/main/java/com/aicamera/
 - 全部检测与构图分析**本地离线**，无需联网、无需 API key（云端 AiProvider 接口已预留）
 - 参考项目：ai-composition-assistant、clifftseng/AI-Camera、compose-ai、CameraQ、mola（产品形态）
 - 真机兼容性：CameraX 已封装，适配主流机型（已在 vivo V2329A 目标机型验证）
-- 版本历史：v2.0 功能闭环 → v2.1 iOS 二改 → v2.2 mola 复刻 → v2.3 重构闭环 → v3.0 全面重写 → v4.0 taste 重构
+- 版本历史：v2.0 功能闭环 → v2.1 iOS 二改 → v2.2 mola 复刻 → v2.3 重构闭环 → v3.0 全面重写 → v4.0 taste 重构 → **v5.0 mola UI + Doka 编辑器 + 可用性修复**
