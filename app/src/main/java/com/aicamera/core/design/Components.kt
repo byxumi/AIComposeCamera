@@ -166,6 +166,7 @@ fun CamShutter(
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
     holdMode: Boolean = false,
+    holding: Boolean = false,
     onHoldStart: () -> Unit = {},
     onHoldEnd: () -> Unit = {},
     video: Boolean = false
@@ -173,8 +174,9 @@ fun CamShutter(
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
     val scale by animateFloatAsState(
-        targetValue = if (pressed) 0.92f else 1f,
-        animationSpec = spring(dampingRatio = 0.5f, stiffness = Spring.StiffnessMedium),
+        // mola rj0: shutterScale=spring(0.5,400)+0.92 按压; holdShutterScale=spring(0.5,1500)+0.82 按住流光
+        targetValue = if (holding) 0.82f else if (pressed) 0.92f else 1f,
+        animationSpec = if (holding) spring(dampingRatio = 0.5f, stiffness = Spring.StiffnessMedium) else spring(dampingRatio = 0.5f, stiffness = Spring.StiffnessMediumLow),
         label = "shutterScale"
     )
     Box(

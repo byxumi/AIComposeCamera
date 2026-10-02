@@ -267,8 +267,8 @@ fun CameraScreen(
             // 镜头标识 (mola: 主摄/超广角/长焦/前摄, 点按循环变焦 0.6x→1x→3x)
             Text(
                 text = if (isFront) "前摄" else when {
-                    zoom < 0.9f -> "超广角"
-                    zoom > 1.1f -> "长焦"
+                    zoom < 0.95f -> "超广角"
+                    zoom >= 1.8f -> "长焦"
                     else -> "主摄"
                 },
                 color = CamColors.SecondaryText,
@@ -279,8 +279,8 @@ fun CameraScreen(
                     .clickable {
                         viewModel.setZoom(
                             when {
-                                zoom < 0.9f -> 1f
-                                zoom > 1.1f -> 0.6f
+                                zoom < 0.95f -> 1f
+                                zoom >= 1.8f -> 0.6f
                                 else -> 3f
                             }
                         )
@@ -328,6 +328,7 @@ fun CameraScreen(
                         }
                     },
                     holdMode = overlay.shootingMode == ShootingMode.VIDEO && overlay.silkFlowMode != SilkFlowMode.NONE,
+                    holding = isRecording && overlay.shootingMode == ShootingMode.VIDEO && overlay.silkFlowMode != SilkFlowMode.NONE,
                     onHoldStart = { viewModel.startSilkFlow() },
                     onHoldEnd = { viewModel.stopSilkFlow() },
                     video = overlay.shootingMode == ShootingMode.VIDEO,
