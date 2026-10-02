@@ -17,6 +17,8 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.aicamera.ai.AiGuideEngine
 import com.aicamera.ai.LocalAiRules
+import com.aicamera.ai.MolaGuidePlan
+import com.aicamera.ai.MolaPlanStep
 import com.aicamera.camera.AnalyzerManager
 import com.aicamera.camera.CameraManager
 import com.aicamera.core.util.LutRepository
@@ -74,6 +76,8 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
     private var aiAssistActive = false
     private var aiPhase = AiPhase.IDLE
     private var aiPromptText = ""
+    /** mola 固定方案步骤(ay0); 为空时退回 buildPlanText */
+    private var aiGuideSteps: List<MolaPlanStep> = emptyList()
     private var lockedSubjectId: Int? = null
     private var aiReachedFired = false
     private var currentAspect = AspectRatio.RATIO_4_3
@@ -102,6 +106,9 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
     val lastSavedUri: StateFlow<String?> = _lastSavedUri.asStateFlow()
     private val _errorMessage = MutableStateFlow<String?>(null)
     val errorMessage: StateFlow<String?> = _errorMessage.asStateFlow()
+
+    private val _zoom = MutableStateFlow(1f)
+    val zoom: StateFlow<Float> = _zoom.asStateFlow()
 
     // 传感器
     private var sensorManager: SensorManager? = null
@@ -147,6 +154,9 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
         }
         viewModelScope.launch {
             mgr.errorMessage.collect { msg -> _errorMessage.value = msg }
+        }
+        viewModelScope.launch {
+            mgr.zoom.collect { z -> _zoom.value = z }
         }
         mgr.start()
         pendingPreview?.let { (provider, pv) ->
@@ -350,12 +360,29 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
             userPrompt = aiPromptText,
             suggestionText = if (aiPhase == AiPhase.PLAN_READY || aiPhase == AiPhase.GUIDING ||
                 aiPhase == AiPhase.READY_SHOOT
-            ) aiGuide.buildPlanText(currentMode, aiPromptText) else "",
+            ) {
+                if (aiGuideSteps.isNotEmpty()) {
+                    val step = aiGuideSteps.firstOrNull { it.condition != "ready" }
+                        ?: aiGuideSteps.last()
+                    step.text
+                } else aiGuide.buildPlanText(currentMode, aiPromptText)
+            } else "",
             thinking = aiPhase == AiPhase.ANALYZING
         )
 
     private fun guideStepsFor(hasSubject: Boolean): List<GuideStep> {
         if (aiPhase != AiPhase.GUIDING && aiPhase != AiPhase.READY_SHOOT) return emptyList()
+        // mola ay0 固定方案: 直接使用步骤文案
+        if (aiGuideSteps.isNotEmpty()) {
+            return aiGuideSteps.mapIndexed { i, s ->
+                GuideStep(
+                    index = i,
+                    title = if (i == 0) aiPromptText else "步骤 ${i + 1}",
+                    instruction = s.text,
+                    done = false
+                )
+            }
+        }
         val target = aiGuide.createTarget(
             currentMode,
             latestSubjects.maxByOrNull { it.box.width() * it.box.height() }?.box,
@@ -443,7 +470,48 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
     /** mola LUT 滤镜选择(151 款, id=assets/luts 文件名) */
     fun selectLutFilter(id: String?) {
         currentLutFilter = id
+        _recommendedLutIds.value = emptyList()
         _toastMessage.value = id?.let { "滤镜已选择" } ?: "原图"
+    }
+
+    // ═══════════════ mola AI 推荐滤镜 ═══════════════
+
+    private val _recommendedLutIds = MutableStateFlow<List<String>>(emptyList())
+    val recommendedLutIds: StateFlow<List<String>> = _recommendedLutIds.asStateFlow()
+
+    /** AI 智能推荐 N 款滤镜(离线启发式: 优先冷/暖分区 + 收藏, 展示 "AI 挑了 N 款滤镜点选后开始拍摄") */
+    fun aiRecommendLuts() {
+        val ctx = getApplication<Application>()
+        viewModelScope.launch {
+            LutRepository.ensureLoaded(ctx)
+            val all = LutRepository.allFilters()
+            if (all.isEmpty()) { _toastMessage.value = "滤镜加载中…"; return@launch }
+            // 启发式: 均匀抽 4 个分类各 1-2 款, 优先收藏, 组成 5 款
+            val favs = LutRepository.favorites(ctx)
+            val pool = if (favs.isNotEmpty()) all.filter { it.id in favs } + all else all
+            val cats = pool.map { it.category }.distinct().take(4)
+            val picked = LinkedHashSet<String>()
+            for (c in cats) {
+                val inCat = pool.filter { it.category == c }
+                if (inCat.isNotEmpty()) picked.add(inCat.first().id)
+            }
+            // 补足到 5 款
+            val rest = pool.filter { it.id !in picked }
+            var i = 0
+            while (picked.size < 5 && i < rest.size) { picked.add(rest[i].id); i++ }
+            _recommendedLutIds.value = picked.toList()
+            _toastMessage.value = "AI 挑了 ${picked.size} 款滤镜，点选后开始拍摄"
+        }
+    }
+
+    fun clearRecommendedLuts() { _recommendedLutIds.value = emptyList() }
+
+    /** mola 长按封面收藏/取消收藏 */
+    fun toggleFavoriteLut(id: String) {
+        val ctx = getApplication<Application>()
+        val added = LutRepository.toggleFavorite(ctx, id)
+        _toastMessage.value = if (added) "已收藏「$id」" else "已取消收藏「$id」"
+        haptic()
     }
 
     /** mola 满血像素开关: 高画质模式 */
@@ -479,6 +547,25 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
+    /** mola ay0: 三套固定方案(元气自拍/杂志半身/旅拍大片) */
+    fun selectMolaPlan(plan: MolaGuidePlan) {
+        aiPromptText = plan.title
+        aiPhase = AiPhase.PLAN_READY
+        aiGuideSteps = plan.steps
+        _toastMessage.value = "「${plan.title}」方案已就绪"
+        delayThenGuide()
+    }
+
+    private fun delayThenGuide() {
+        viewModelScope.launch {
+            delay(800)
+            if (aiPhase == AiPhase.PLAN_READY) {
+                aiPhase = AiPhase.GUIDING
+                aiAssistActive = true
+            }
+        }
+    }
+
     fun submitAiPrompt(prompt: String) {
         aiPromptText = prompt
         aiPhase = AiPhase.ANALYZING
@@ -487,15 +574,14 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
             delay(1200)
             aiPhase = AiPhase.PLAN_READY
             _toastMessage.value = "方案已生成"
-            delay(600)
-            aiPhase = AiPhase.GUIDING
-            aiAssistActive = true
+            delayThenGuide()
         }
     }
 
     fun closeAiPhotographer() {
         aiPhase = AiPhase.IDLE
         aiAssistActive = false
+        aiGuideSteps = emptyList()
     }
 
     fun manualSelectSubject(x: Float, y: Float) {

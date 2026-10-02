@@ -126,4 +126,59 @@ object AiGuideEngine {
         }
         return if (prompt.isNotBlank()) "针对「$prompt」→ $base" else base
     }
+
+    // ═══════════════ mola AI 摄影师固定方案(ay0 逆向) ═══════════════
+
+    /** AI 摄影师固定方案: 三套(元气自拍/杂志半身/旅拍大片) */
+    val MOLA_PLANS = listOf(
+        MolaGuidePlan(
+            id = "lively_selfie",
+            title = "元气自拍",
+            desc = "歪头微笑，活泼治愈。手机举高一点点俯拍，笑容和眼神都亮起来，像随手拍到的高光瞬间。",
+            steps = listOf(
+                MolaPlanStep("手机举到眉心斜上方一拳，脸放大到画面约一半——离近一点。", "framing", 7.0),
+                MolaPlanStep("头轻轻歪向屏幕一侧一点点，眼睛看向镜头。", "headTilt", 6.0),
+                MolaPlanStep("肩膀放松下沉，轻松地笑，眼神看镜头上沿亮起来。", "timed", 5.0),
+                MolaPlanStep("好状态！马上拍。", "ready", 999.0)
+            )
+        ),
+        MolaGuidePlan(
+            id = "magazine_half",
+            title = "杂志半身",
+            desc = "侧身错肩，气场全开。像时尚杂志内页一样干净利落的半身像，线条舒展、眼神克制。",
+            steps = listOf(
+                MolaPlanStep("往后半步露出肩膀，头顶别顶满，脸放在屏幕三分线一侧。", "framing", 7.0),
+                MolaPlanStep("身体侧三十度左右，肩膀一前一后错开。", "bodyTurnedAway", 6.0),
+                MolaPlanStep("一只手撩头发或插兜，手腕露出来，另一只手放松。", "wristVisible", 6.0),
+                MolaPlanStep("看向镜头，下巴轻轻收，稳住重心准备拍。", "timed", 5.0),
+                MolaPlanStep("很有杂志感，马上拍！", "ready", 999.0)
+            )
+        ),
+        MolaGuidePlan(
+            id = "travel_grand",
+            title = "旅拍大片",
+            desc = "全身入镜，意境感拉满。人小景大留足负空间，像旅行画报封面一样有故事感。",
+            steps = listOf(
+                MolaPlanStep("退到全身进画面：脚下留地面，头顶别顶满，人小景大。", "framing", 8.0),
+                MolaPlanStep("手张开或扶一下包、帽檐，把身体线条拉开，别挡光。", "timed", 6.0),
+                MolaPlanStep("眼睛看向远处，下巴轻轻收，别低头看脚。", "headUp", 6.0),
+                MolaPlanStep("构图很棒，马上拍！", "ready", 999.0)
+            )
+        )
+    )
 }
+
+/** mola AI 摄影师方案(ay0 逆向): 标题/描述/分步引导 */
+data class MolaGuidePlan(
+    val id: String,
+    val title: String,
+    val desc: String,
+    val steps: List<MolaPlanStep>
+)
+
+/** 单步引导: 文案 + condition 类型 + 时长秒(999=常驻) */
+data class MolaPlanStep(
+    val text: String,
+    val condition: String,
+    val seconds: Double
+)

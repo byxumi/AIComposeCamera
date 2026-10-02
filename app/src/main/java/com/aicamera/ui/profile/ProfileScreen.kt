@@ -25,6 +25,10 @@ import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -34,6 +38,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.aicamera.core.design.CamButton
 import com.aicamera.core.design.CamColors
+import com.aicamera.core.design.CamDialog
 import com.aicamera.core.design.CamShapes
 import com.aicamera.core.design.CamType
 
@@ -44,6 +49,8 @@ fun ProfileScreen(
     onOpenGallery: () -> Unit,
     onShare: () -> Unit
 ) {
+    var showMemberDialog by remember { mutableStateOf(false) }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -111,7 +118,12 @@ fun ProfileScreen(
                 Spacer(Modifier.width(8.dp))
                 Text("Mola 会员", color = CamColors.White, style = CamType.Body)
                 Spacer(Modifier.weight(1f))
-                Text("立即升级", color = CamColors.Accent, style = CamType.Body)
+                Text(
+                    "立即升级",
+                    color = CamColors.Accent,
+                    style = CamType.Body,
+                    modifier = Modifier.clickable { showMemberDialog = true }
+                )
             }
             Spacer(Modifier.height(12.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -139,6 +151,50 @@ fun ProfileScreen(
             modifier = Modifier.align(Alignment.CenterHorizontally)
         )
         Spacer(Modifier.height(16.dp))
+    }
+
+    if (showMemberDialog) {
+        CamDialog(
+            title = "Mola 会员",
+            onDismiss = { showMemberDialog = false },
+            confirmText = "立即开通",
+            onConfirm = { showMemberDialog = false }
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(
+                    "解锁全部 AI 能力与无损画质",
+                    color = CamColors.SecondaryText,
+                    style = CamType.Body
+                )
+                MemberPlan("连续包月", "¥12/月", "AI 滤镜 · 流光快门 · 满血像素")
+                MemberPlan("连续包年", "¥98/年", "省 ¥46 · 全部权益")
+                MemberPlan("永久买断", "¥198 一次性", "一次购买 · 终身使用")
+                Text(
+                    "支付方式: 微信 / 支付宝 / 云闪付",
+                    color = CamColors.TertiaryText,
+                    style = CamType.Caption
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun MemberPlan(title: String, price: String, desc: String) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(CamShapes.Control)
+            .background(CamColors.SurfaceElevated)
+            .padding(horizontal = 14.dp, vertical = 12.dp)
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(title, color = CamColors.White, style = CamType.Body)
+            Spacer(Modifier.height(2.dp))
+            Text(desc, color = CamColors.TertiaryText, style = CamType.Caption)
+        }
+        Text(price, color = CamColors.Accent, style = CamType.Body, fontWeight = FontWeight.Bold)
     }
 }
 

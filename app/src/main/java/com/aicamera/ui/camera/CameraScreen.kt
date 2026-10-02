@@ -11,7 +11,10 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -44,6 +47,7 @@ import androidx.compose.material.icons.filled.FlashOff
 import androidx.compose.material.icons.filled.FlashOn
 import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material.icons.outlined.AspectRatio
 import androidx.compose.material3.Icon
@@ -89,6 +93,8 @@ import com.aicamera.core.design.CamTextButton
 import com.aicamera.core.design.CamType
 import com.aicamera.core.util.LutRepository
 import com.aicamera.core.util.MolaFilter
+import com.aicamera.ai.AiGuideEngine
+import com.aicamera.ai.LocalAiRules
 import com.aicamera.domain.model.AiPhase
 import com.aicamera.domain.model.AspectRatio
 import com.aicamera.domain.model.FilterStyle
@@ -115,6 +121,7 @@ fun CameraScreen(
     val toast by viewModel.toastMessage.collectAsState()
     val isRecording by viewModel.isRecording.collectAsState()
     val cameraReady by viewModel.cameraReady.collectAsState()
+    val zoom by viewModel.zoom.collectAsState()
 
     var showAiDialog by remember { mutableStateOf(false) }
     var aiPrompt by remember { mutableStateOf("") }
@@ -303,33 +310,37 @@ fun CameraScreen(
                 LutFilterWheel(
                     selected = overlay.lutFilterId,
                     onSelect = { viewModel.selectLutFilter(it) },
+                    recommended = viewModel.recommendedLutIds.collectAsState().value,
+                    onAiRecommend = { viewModel.aiRecommendLuts() },
+                    onClearRecommend = { viewModel.clearRecommendedLuts() },
+                    onToggleFavorite = { viewModel.toggleFavoriteLut(it) },
                     modifier = Modifier.fillMaxWidth()
                 )
 
                 Spacer(Modifier.height(10.dp))
 
-                // 行2: 变焦 / 相框
+                // 行2: 变焦(三摄) / 相框
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.Center,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     CamTextButton(
-                        text = "1x",
-                        selected = false,
+                        text = "超广角",
+                        selected = zoom < 0.9f,
+                        onClick = { viewModel.setZoom(0.6f) },
+                        modifier = Modifier.padding(horizontal = 4.dp)
+                    )
+                    CamTextButton(
+                        text = "主摄",
+                        selected = zoom in 0.9f..1.1f,
                         onClick = { viewModel.setZoom(1f) },
                         modifier = Modifier.padding(horizontal = 4.dp)
                     )
                     CamTextButton(
-                        text = "2x",
-                        selected = false,
-                        onClick = { viewModel.setZoom(2f) },
-                        modifier = Modifier.padding(horizontal = 4.dp)
-                    )
-                    CamTextButton(
-                        text = "5x",
-                        selected = false,
-                        onClick = { viewModel.setZoom(5f) },
+                        text = "长焦",
+                        selected = zoom > 1.1f,
+                        onClick = { viewModel.setZoom(3f) },
                         modifier = Modifier.padding(horizontal = 4.dp)
                     )
                     Spacer(Modifier.width(8.dp))
@@ -501,7 +512,43 @@ fun CameraScreen(
                             Text(
                                 text = "欢迎来到 AI 摄影师，告诉我你想拍什么",
                                 color = CamColors.SecondaryText,
-                                style = CamType.Body
+                                style = CamType.Body,
+                                modifier = Modifier.padding(bottom = 10.dp)
+                            )
+                            // mola ay0 三套固定方案
+                            AiGuideEngine.MOLA_PLANS.forEach { plan ->
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(CamShapes.Control)
+                                        .background(CamColors.SurfaceElevated)
+                                        .clickable {
+                                            showAiDialog = false
+                                            viewModel.selectMolaPlan(plan)
+                                        }
+                                        .padding(horizontal = 12.dp, vertical = 10.dp)
+                                ) {
+                                    Column(Modifier.weight(1f)) {
+                                        Text(plan.title, color = CamColors.White, style = CamType.Body)
+                                        Spacer(Modifier.height(2.dp))
+                                        Text(
+                                            plan.desc,
+                                            color = CamColors.TertiaryText,
+                                            style = CamType.Caption,
+                                            maxLines = 2,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+                                    Text("使用", color = CamColors.Accent, style = CamType.Caption)
+                                }
+                                Spacer(Modifier.height(6.dp))
+                            }
+                            Text(
+                                "或自定义描述：",
+                                color = CamColors.TertiaryText,
+                                style = CamType.Caption,
+                                modifier = Modifier.padding(top = 4.dp, bottom = 6.dp)
                             )
                         }
                         AiPhase.ANALYZING -> {
@@ -513,7 +560,10 @@ fun CameraScreen(
                         }
                         AiPhase.PLAN_READY -> {
                             Text(
-                                text = overlay.aiMessage.ifBlank { "方案已生成，点击开始引导" },
+                                text = overlay.aiMessage.ifBlank {
+                                    AiGuideEngine.MOLA_PLANS.firstOrNull { it.title == overlay.aiPhotographer?.userPrompt }
+                                        ?.desc ?: "方案已生成，点击开始引导"
+                                },
                                 color = CamColors.SecondaryText,
                                 style = CamType.Body,
                                 modifier = Modifier.padding(bottom = 12.dp)
@@ -536,16 +586,22 @@ fun CameraScreen(
 }
 
 /** mola LUT 调色盘: 分类条 + 滤镜封面轮(151 款, 与编辑器一致) */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun LutFilterWheel(
     selected: String?,
     onSelect: (String?) -> Unit,
+    recommended: List<String>,
+    onAiRecommend: () -> Unit,
+    onClearRecommend: () -> Unit,
+    onToggleFavorite: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
     var filters by remember { mutableStateOf<List<MolaFilter>>(emptyList()) }
     var categories by remember { mutableStateOf<List<String>>(emptyList()) }
     var selectedCategory by remember { mutableStateOf("全部") }
+    var favorites by remember { mutableStateOf(LutRepository.favorites(context)) }
 
     LaunchedEffect(Unit) {
         LutRepository.ensureLoaded(context)
@@ -570,11 +626,40 @@ private fun LutFilterWheel(
         }
         Spacer(Modifier.height(8.dp))
 
-        // 封面轮(原图 + 分类内滤镜)
+        // 封面轮(原图 + 分类内滤镜; AI 推荐时可筛选)
         LazyRow(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             modifier = Modifier.fillMaxWidth()
         ) {
+            if (recommended.isNotEmpty()) {
+                item(key = "ai-banner") {
+                    Column(
+                        modifier = Modifier
+                            .width(120.dp)
+                            .clip(CamShapes.Small)
+                            .background(CamColors.AccentDim)
+                            .clickable { onClearRecommend() }
+                            .padding(6.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text("AI 挑了 ${recommended.size} 款", color = CamColors.Accent, style = CamType.Secondary)
+                        Text(
+                            "点选后开始拍摄",
+                            color = CamColors.White,
+                            style = CamType.Caption,
+                            maxLines = 1
+                        )
+                        Spacer(Modifier.height(4.dp))
+                        CamTextButton(
+                            text = "关闭",
+                            selected = false,
+                            onClick = { onClearRecommend() },
+                            modifier = Modifier.width(60.dp)
+                        )
+                    }
+                }
+            }
+
             item(key = "none") {
                 Column(
                     modifier = Modifier
@@ -588,8 +673,12 @@ private fun LutFilterWheel(
                     Text("原图", color = CamColors.White, style = CamType.Secondary, maxLines = 1)
                 }
             }
-            val shown = if (selectedCategory == "全部") filters
-            else filters.filter { it.category == selectedCategory }
+            // AI 推荐列表(若非空则只显示推荐)
+            val shown = if (recommended.isNotEmpty()) {
+                filters.filter { it.id in recommended }
+            } else if (selectedCategory == "全部") {
+                filters
+            } else filters.filter { it.category == selectedCategory }
             items(shown, key = { it.id }) { f ->
                 val isSelected = selected == f.id
                 Column(
@@ -597,21 +686,39 @@ private fun LutFilterWheel(
                         .width(56.dp)
                         .clip(CamShapes.Small)
                         .background(if (isSelected) CamColors.AccentDim else Color.Transparent)
-                        .clickable { onSelect(if (isSelected) null else f.id) }
+                        .combinedClickable(
+                            onClick = { onSelect(if (isSelected) null else f.id) },
+                            onLongClick = {
+                                onToggleFavorite(f.id)
+                                favorites = LutRepository.favorites(context)
+                            }
+                        )
                         .padding(2.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    AsyncImage(
-                        model = ImageRequest.Builder(context)
-                            .data("file:///android_asset/luts/${f.coverFile}")
-                            .crossfade(true)
-                            .build(),
-                        contentDescription = f.label,
-                        modifier = Modifier
-                            .size(48.dp)
-                            .clip(CamShapes.Small),
-                        contentScale = ContentScale.Crop
-                    )
+                    Box {
+                        AsyncImage(
+                            model = ImageRequest.Builder(context)
+                                .data("file:///android_asset/luts/${f.coverFile}")
+                                .crossfade(true)
+                                .build(),
+                            contentDescription = f.label,
+                            modifier = Modifier
+                                .size(48.dp)
+                                .clip(CamShapes.Small),
+                            contentScale = ContentScale.Crop
+                        )
+                        if (f.id in favorites) {
+                            Icon(
+                                Icons.Filled.Star,
+                                contentDescription = "已收藏",
+                                tint = CamColors.Accent,
+                                modifier = Modifier
+                                    .size(12.dp)
+                                    .align(Alignment.TopEnd)
+                            )
+                        }
+                    }
                     Spacer(Modifier.height(2.dp))
                     Text(
                         f.label,

@@ -1,6 +1,7 @@
 package com.aicamera.core.util
 
 import android.content.Context
+import android.content.SharedPreferences
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -26,6 +27,9 @@ object LutRepository {
     @Volatile private var filters: List<MolaFilter> = emptyList()
     @Volatile private var categories: List<String> = emptyList()
     private val cache = HashMap<String, MolaLut.LutData>()
+    private var prefs: SharedPreferences? = null
+    private fun prefs(context: Context): SharedPreferences =
+        prefs ?: context.getSharedPreferences("lut_prefs", Context.MODE_PRIVATE).also { prefs = it }
 
     /** 加载 manifest(幂等)。IO 线程调用,之后可用主线程读 filters/categories。 */
     suspend fun ensureLoaded(context: Context) {
@@ -73,4 +77,26 @@ object LutRepository {
 
     /** 清除 LUT 缓存(可选项画内存)。 */
     fun clearCache() { synchronized(cache) { cache.clear() } }
+
+    // ═══════════════ 收藏滤镜(mola 长按封面收藏) ═══════════════
+
+    /** 收藏 id 集合(同步读, 主线程安全)。 */
+    fun favorites(context: Context): Set<String> =
+        prefs(context).getStringSet("fav_luts", emptySet()) ?: emptySet()
+
+    fun isFavorite(context: Context, id: String): Boolean = id in favorites(context)
+
+    fun toggleFavorite(context: Context, id: String): Boolean {
+        val p = prefs(context)
+        val current = p.getStringSet("fav_luts", emptySet())?.toMutableSet() ?: mutableSetOf()
+        val added = if (id in current) { current.remove(id); false } else { current.add(id); true }
+        p.edit().putStringSet("fav_luts", current).apply()
+        return added
+    }
+
+    /** 按收藏优先排序(前面是收藏), 供滤镜轮/编辑面板展示。 */
+    fun orderedByFavorite(context: Context, list: List<MolaFilter>): List<MolaFilter> {
+        val favs = favorites(context)
+        return list.sortedByDescending { it.id in favs }
+    }
 }
