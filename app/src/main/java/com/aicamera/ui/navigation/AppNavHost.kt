@@ -91,7 +91,8 @@ fun AppNavHost() {
             composable(Routes.CAMERA) {
                 CameraScreen(
                     onOpenGallery = { nav.navigate(Routes.GALLERY) },
-                    onOpenSettings = { nav.navigate(Routes.SETTINGS) }
+                    onOpenSettings = { nav.navigate(Routes.SETTINGS) },
+                    onOpenProfile = { nav.navigate(Routes.PROFILE) }
                 )
             }
             composable(Routes.GALLERY) {

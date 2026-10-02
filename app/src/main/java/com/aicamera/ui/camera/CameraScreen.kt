@@ -111,7 +111,8 @@ import com.aicamera.domain.model.SilkFlowMode
 fun CameraScreen(
     viewModel: CameraViewModel = viewModel(),
     onOpenGallery: () -> Unit,
-    onOpenSettings: () -> Unit
+    onOpenSettings: () -> Unit,
+    onOpenProfile: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -259,7 +260,17 @@ fun CameraScreen(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Spacer(Modifier.width(44.dp))
+            // 会员按钮 (mola: 黑底 0xFF3A2E10 + 金色文字)
+            Text(
+                text = "会员",
+                color = CamColors.AccentLight,
+                style = CamType.BodyMedium,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(Color(0xFF3A2E10))
+                    .clickable { onOpenProfile() }
+                    .padding(horizontal = 14.dp, vertical = 6.dp)
+            )
             // 镜头标识 (mola: 主摄/超广角/长焦/前摄)
             Text(
                 text = if (isFront) "前摄" else when {
@@ -527,7 +538,11 @@ fun CameraScreen(
                 )
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    "长按滤镜封面即可收藏",
+                    text = if (overlay.shootingMode == ShootingMode.VIDEO) {
+                        "点选滤镜，满意后按录制"
+                    } else {
+                        "点选滤镜，满意后按快门"
+                    },
                     color = CamColors.TertiaryText,
                     style = CamType.Caption,
                     textAlign = TextAlign.Center,
