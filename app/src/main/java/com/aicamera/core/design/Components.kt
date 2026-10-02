@@ -1,9 +1,14 @@
 package com.aicamera.core.design
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
@@ -14,6 +19,8 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -42,10 +49,12 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -142,13 +151,16 @@ fun CamTextButton(
     }
 }
 
-/** 快门: 白色双环 (录制时为红方角) — 按压回弹 0.92 */
+/** 快门: 白色双环 (录制时为红方角) — 按压回弹 0.92; holdMode 支持按住拍摄 (流光快门) */
 @Composable
 fun CamShutter(
     isRecording: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    enabled: Boolean = true
+    enabled: Boolean = true,
+    holdMode: Boolean = false,
+    onHoldStart: () -> Unit = {},
+    onHoldEnd: () -> Unit = {}
 ) {
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
@@ -164,6 +176,22 @@ fun CamShutter(
             .scale(scale)
             .clip(CircleShape)
             .border(4.dp, outer, CircleShape)
+            .then(
+                if (holdMode) {
+                    Modifier.pointerInput(Unit) {
+                        detectTapGestures(
+                            onPress = {
+                                onHoldStart()
+                                try {
+                                    awaitRelease()
+                                } finally {
+                                    onHoldEnd()
+                                }
+                            }
+                        )
+                    }
+                } else Modifier
+            )
             .padding(5.dp),
         contentAlignment = Alignment.Center
     ) {
@@ -173,7 +201,7 @@ fun CamShutter(
                 .clip(CamShapes.Small)
                 .background(outer)
                 .clickable(
-                    enabled = enabled,
+                    enabled = enabled && !holdMode,
                     interactionSource = interaction,
                     indication = null,
                     onClick = onClick
@@ -260,6 +288,116 @@ fun PulsingTarget(
                     style = Stroke(2.dp.toPx())
                 )
             }
+        }
+    }
+}
+
+/**
+ * mola 风格 AI 目标圈 — 逆向 si.java case 0:
+ * 金色双圈 + 5 段扫弧 + 中心呼吸环 + 到达后旋转扫光弧 + 4 条正交刻度。
+ */
+@Composable
+fun MolaTargetRing(
+    cx: Float,
+    cy: Float,
+    radiusPx: Float,
+    reached: Boolean,
+    modifier: Modifier = Modifier
+) {
+    val sweep by rememberInfiniteTransition(label = "molaSweep").animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(CamMotion.PulseMillis * 2, easing = androidx.compose.animation.core.FastOutSlowInEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "molaSweep"
+    )
+    val breath = rememberPulse(0.94f..1.06f)
+    val gold = CamColors.Accent
+    val deepGold = CamColors.AccentStrong
+    val brightGold = CamColors.AccentLight
+    Canvas(modifier = modifier) {
+        val center = Offset(cx * size.width, cy * size.height)
+        val r = radiusPx
+        val thin = 1.dp.toPx()
+        val thick = 2.dp.toPx()
+
+        // 外圈 (金色)
+        drawCircle(gold.copy(alpha = 0.9f), radius = r, center = center, style = Stroke(thick))
+        // 内圈 (深金)
+        drawCircle(deepGold.copy(alpha = 0.7f), radius = r * 0.84f, center = center, style = Stroke(thin))
+
+        // 5 段扫弧: 随 sweep 依次亮起 (与 si.java 5 段渐变更一致)
+        for (i in 0 until 5) {
+            val segStart = (i / 5f) * 360f
+            val segEnd = segStart + 60f
+            val localAlpha = ((sweep * 5f - i).coerceIn(0f, 1f))
+            if (localAlpha > 0.01f) {
+                drawArc(
+                    color = brightGold.copy(alpha = localAlpha * 0.85f),
+                    startAngle = segStart - 90f,
+                    sweepAngle = segEnd - segStart,
+                    useCenter = false,
+                    topLeft = Offset(center.x - r, center.y - r),
+                    size = androidx.compose.ui.geometry.Size(r * 2f, r * 2f),
+                    style = Stroke(thick, cap = StrokeCap.Round)
+                )
+            }
+        }
+
+        // 中心呼吸环
+        drawCircle(
+            color = gold.copy(alpha = 0.55f * breath),
+            radius = 2.2.dp.toPx() * breath,
+            center = center,
+            style = Stroke(1.5.dp.toPx())
+        )
+        drawCircle(Color.Black.copy(alpha = 0.28f), radius = 1.5.dp.toPx(), center = center)
+
+        // 到达后: 旋转扫光弧 (si.java E0: 起扫 -90°-(f*180+180)/2, 扫 180°)
+        if (reached) {
+            val rot = sweep * 360f
+            rotate(rot, center) {
+                drawArc(
+                    color = brightGold.copy(alpha = 0.5f),
+                    startAngle = -90f,
+                    sweepAngle = 120f,
+                    useCenter = false,
+                    topLeft = Offset(center.x - r, center.y - r),
+                    size = androidx.compose.ui.geometry.Size(r * 2f, r * 2f),
+                    style = Stroke(thick, cap = StrokeCap.Round)
+                )
+            }
+            // 4 条正交刻度线
+            for (i in 0 until 4) {
+                val angle = i * (Math.PI / 2)
+                val cosA = cos(angle).toFloat()
+                val sinA = sin(angle).toFloat()
+                drawLine(
+                    color = gold.copy(alpha = 0.5f),
+                    start = Offset(center.x + cosA * r * 0.7f, center.y + sinA * r * 0.7f),
+                    end = Offset(center.x + cosA * r * 0.95f, center.y + sinA * r * 0.95f),
+                    strokeWidth = thick
+                )
+            }
+        } else {
+            // 未到达: 移动方向箭头提示
+            val arrowLen = r * 0.35f
+            drawLine(
+                color = brightGold.copy(alpha = 0.8f),
+                start = Offset(center.x - arrowLen, center.y),
+                end = Offset(center.x + arrowLen, center.y),
+                strokeWidth = thick,
+                cap = StrokeCap.Round
+            )
+            drawLine(
+                color = brightGold.copy(alpha = 0.8f),
+                start = Offset(center.x, center.y - arrowLen),
+                end = Offset(center.x, center.y + arrowLen),
+                strokeWidth = thick,
+                cap = StrokeCap.Round
+            )
         }
     }
 }

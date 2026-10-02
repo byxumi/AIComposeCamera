@@ -74,6 +74,11 @@ class CameraManager(
     private var analyzer: AnalyzerManager? = null
     private var onVideoSaved: ((File?) -> Unit)? = null
 
+    // ── 流光快门 (长曝光合成: 按住连拍 → AVG 叠加) ──
+    private val burstFiles = java.util.Collections.synchronizedList(mutableListOf<File>())
+    private var burstMode = false
+    private var burstHandler: android.os.Handler? = null
+
     private val orientationListener = object : OrientationEventListener(context) {
         override fun onOrientationChanged(orientation: Int) {
             // 拍照方向由系统处理，这里保持接口
@@ -276,10 +281,89 @@ class CameraManager(
         orientationListener.disable()
         recording?.stop()
         recording = null
+        burstHandler?.removeCallbacksAndMessages(null)
+        burstHandler = null
         cameraExecutor.shutdown()
         cameraProvider?.unbindAll()
         cameraProvider = null
         analyzer?.close()
         analyzer = null
+    }
+
+    // ── 流光快门 ──
+    /** 开始长曝光连拍: 每 250ms 拍一帧, 按住期间持续收集 */
+    fun startBurstShots() {
+        if (burstMode) return
+        burstMode = true
+        burstFiles.clear()
+        val h = burstHandler ?: android.os.Handler(android.os.Looper.getMainLooper()).also { burstHandler = it }
+        val tick = object : Runnable {
+            override fun run() {
+                if (!burstMode) return
+                takePhoto { file ->
+                    if (file != null) {
+                        burstFiles.add(file)
+                    }
+                }
+                h.postDelayed(this, 250)
+            }
+        }
+        h.post(tick)
+    }
+
+    /** 结束连拍并合成 (AVG 叠加 → 丝绢流水; MAX 叠加 → 光轨/车流) */
+    fun finishBurst(lightTrail: Boolean, onDone: (File?) -> Unit) {
+        val h = burstHandler
+        if (h != null) { h.removeCallbacksAndMessages(null); burstHandler = null }
+        burstMode = false
+        val frames = ArrayList(burstFiles)
+        burstFiles.clear()
+        if (frames.isEmpty()) { onDone(null); return }
+        // 异步合成
+        cameraExecutor.execute {
+            try {
+                val first = android.graphics.BitmapFactory.decodeFile(frames[0].absolutePath) ?: run {
+                    frames.forEach { it.delete() }; onDone(null); return@execute
+                }
+                val w = first.width; val hh = first.height
+                val acc = IntArray(w * hh)
+                var count = 0
+                val tmp = IntArray(w * hh)
+                // 均值叠加: 保留暗部细节 (光轨 = 取最大亮度)
+                for (f in frames) {
+                    val bmp = android.graphics.BitmapFactory.decodeFile(f.absolutePath) ?: continue
+                    if (bmp.width == w && bmp.height == hh) {
+                        bmp.getPixels(tmp, 0, w, 0, 0, w, hh)
+                        for (i in tmp.indices) {
+                            val a = tmp[i]
+                            if (count == 0) { acc[i] = a; continue }
+                            val pa = acc[i]
+                            val pr = (pa shr 16) and 0xFF; val pg = (pa shr 8) and 0xFF; val pb = pa and 0xFF
+                            val r = (a shr 16) and 0xFF; val g = (a shr 8) and 0xFF; val b = a and 0xFF
+                            // 光轨车流: 取最亮; 丝绢流水: 均值
+                            acc[i] = if (lightTrail) {
+                                // 光轨 = 最大
+                                (0xFF shl 24) or (maxOf(pr, r) shl 16) or (maxOf(pg, g) shl 8) or maxOf(pb, b)
+                            } else {
+                                (0xFF shl 24) or ((pr + r) / 2 shl 16) or ((pg + g) / 2 shl 8) or ((pb + b) / 2)
+                            }
+                        }
+                        count++
+                    }
+                    bmp.recycle(); f.delete()
+                }
+                val out = android.graphics.Bitmap.createBitmap(w, hh, android.graphics.Bitmap.Config.ARGB_8888)
+                out.setPixels(acc, 0, w, 0, 0, w, hh)
+                val f = File(context.cacheDir, "silkflow_${System.currentTimeMillis()}.jpg")
+                f.outputStream().use { os ->
+                    out.compress(android.graphics.Bitmap.CompressFormat.JPEG, 95, os)
+                }
+                out.recycle(); first.recycle()
+                onDone(f)
+            } catch (e: Exception) {
+                Log.e(TAG, "流光合成失败", e)
+                onDone(null)
+            }
+        }
     }
 }

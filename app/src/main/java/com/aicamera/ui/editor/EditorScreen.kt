@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -50,10 +51,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
@@ -63,6 +67,8 @@ import androidx.lifecycle.ViewModelProvider.AndroidViewModelFactory.Companion.AP
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import coil.compose.AsyncImage
+import coil.request.ImageRequest
 import com.aicamera.core.design.CamButton
 import com.aicamera.core.design.CamColors
 import com.aicamera.core.design.CamDialog
@@ -71,6 +77,8 @@ import com.aicamera.core.design.CamShapes
 import com.aicamera.core.design.CamTextButton
 import com.aicamera.core.design.CamType
 import com.aicamera.core.util.FilterParams
+import com.aicamera.core.util.LutRepository
+import com.aicamera.core.util.MolaFilter
 import com.aicamera.core.util.StickerOverlayData
 import com.aicamera.core.util.StickerOverlayType
 import com.aicamera.core.util.TextOverlayData
@@ -153,6 +161,7 @@ fun EditorScreen(
 ) {
     val bitmap by viewModel.editBitmap.collectAsState()
     val filter by viewModel.filter.collectAsState()
+    val lutFilter by viewModel.lutFilter.collectAsState()
     val adjusts by viewModel.adjusts.collectAsState()
     val texts by viewModel.texts.collectAsState()
     val stickers by viewModel.stickers.collectAsState()
@@ -328,6 +337,8 @@ fun EditorScreen(
                 tool = t
             },
             onFilter = { p -> viewModel.setFilter(p) },
+            lutFilter = lutFilter,
+            onLutFilter = { id -> viewModel.setLutFilter(id) },
             onAdjust = { key, v ->
                 if (key == AdjustKey.SHARPNESS) {
                     sharpen = v
@@ -477,10 +488,12 @@ private fun WatermarkPreview(mode: WatermarkKind, modifier: Modifier = Modifier)
 private fun BottomTools(
     tool: EditTool,
     filter: FilterPreset?,
+    lutFilter: String?,
     adjusts: FilterParams,
     sharpen: Float,
     onSelectTool: (EditTool) -> Unit,
     onFilter: (FilterPreset?) -> Unit,
+    onLutFilter: (String?) -> Unit,
     onAdjust: (AdjustKey, Float) -> Unit,
     onAdjustCommit: () -> Unit,
     onRotate: () -> Unit,
@@ -534,7 +547,7 @@ private fun BottomTools(
 
         when (tool) {
             EditTool.ADJUST -> AdjustPanel(adjusts, sharpen, onAdjust, onAdjustCommit, onReset)
-            EditTool.FILTER -> FilterPanel(filter, onFilter)
+            EditTool.FILTER -> FilterPanel(filter, lutFilter, onFilter, onLutFilter)
             EditTool.CROP -> CropPanel(onRotate, onFlipH, onFlipV)
             EditTool.TEXT -> TextPanel(onAddText)
             EditTool.STICKER -> StickerPanel(onAddSticker)
@@ -630,25 +643,89 @@ private fun AdjustSliderRow(
 @Composable
 private fun FilterPanel(
     filter: FilterPreset?,
-    onFilter: (FilterPreset?) -> Unit
+    lutFilter: String?,
+    onFilter: (FilterPreset?) -> Unit,
+    onLutFilter: (String?) -> Unit
 ) {
-    LazyRow(
-        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 16.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        item {
-            CamTextButton(
-                text = "原图",
-                selected = filter == null,
-                onClick = { onFilter(null) }
-            )
+    val context = LocalContext.current
+    var filters by remember { mutableStateOf<List<MolaFilter>>(emptyList()) }
+    var categories by remember { mutableStateOf<List<String>>(emptyList()) }
+    var selectedCategory by remember { mutableStateOf("全部") }
+
+    LaunchedEffect(Unit) {
+        LutRepository.ensureLoaded(context)
+        filters = LutRepository.allFilters()
+        categories = listOf("全部") + LutRepository.categories()
+    }
+
+    Column(Modifier.fillMaxWidth()) {
+        // 分类条
+        LazyRow(
+            contentPadding = PaddingValues(horizontal = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            items(categories) { cat ->
+                CamTextButton(
+                    text = cat,
+                    selected = selectedCategory == cat,
+                    onClick = { selectedCategory = cat }
+                )
+            }
         }
-        items(editorFilterPresets.drop(1), key = { it.style.name }) { preset ->
-            CamTextButton(
-                text = preset.style.label,
-                selected = filter?.style == preset.style,
-                onClick = { onFilter(preset) }
-            )
+        Spacer(Modifier.height(8.dp))
+
+        // 滤镜封面轮(150 款 + 原图)
+        LazyRow(
+            contentPadding = PaddingValues(horizontal = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            item(key = "none") {
+                Column(
+                    modifier = Modifier
+                        .width(64.dp)
+                        .clip(CamShapes.Small)
+                        .background(if (lutFilter == null && filter == null) CamColors.AccentDim else CamColors.SurfaceElevated)
+                        .clickable { onFilter(null); onLutFilter(null) }
+                        .padding(vertical = 6.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text("原图", color = CamColors.White, style = CamType.Secondary)
+                }
+            }
+            val shown = if (selectedCategory == "全部") filters
+            else filters.filter { it.category == selectedCategory }
+            items(shown, key = { it.id }) { f ->
+                val selected = lutFilter == f.id
+                Column(
+                    modifier = Modifier
+                        .width(64.dp)
+                        .clip(CamShapes.Small)
+                        .background(if (selected) CamColors.AccentDim else Color.Transparent)
+                        .clickable { onLutFilter(if (selected) null else f.id) }
+                        .padding(4.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    AsyncImage(
+                        model = ImageRequest.Builder(context)
+                            .data("file:///android_asset/luts/${f.coverFile}")
+                            .crossfade(true)
+                            .build(),
+                        contentDescription = f.label,
+                        modifier = Modifier
+                            .size(56.dp)
+                            .clip(CamShapes.Small),
+                        contentScale = ContentScale.Crop
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        f.label,
+                        color = if (selected) CamColors.Accent else CamColors.White,
+                        style = CamType.Secondary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
         }
     }
 }

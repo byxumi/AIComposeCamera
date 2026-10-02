@@ -15,6 +15,8 @@ import com.aicamera.core.util.StickerOverlayData
 import com.aicamera.core.util.StickerOverlayType
 import com.aicamera.core.util.WatermarkKind
 import com.aicamera.core.util.FilterParams
+import com.aicamera.core.util.LutRepository
+import com.aicamera.core.util.MolaLut
 import com.aicamera.data.PhotoStore
 import com.aicamera.domain.model.FilterPreset
 import com.aicamera.domain.model.FilterStyle
@@ -67,6 +69,10 @@ class EditorViewModel(private val context: Context, private val uriString: Strin
     // ── 滤镜 ──
     private val _filter = MutableStateFlow<FilterPreset?>(null)
     val filter: StateFlow<FilterPreset?> = _filter.asStateFlow()
+
+    /** mola LUT 滤镜 id(null=未选)。与 ColorMatrix filter 互斥,取其一。 */
+    private val _lutFilter = MutableStateFlow<String?>(null)
+    val lutFilter: StateFlow<String?> = _lutFilter.asStateFlow()
 
     // ── 叠加层（Compose 实时绘制，保存时合成）──
     private val _texts = MutableStateFlow<List<TextOverlayData>>(emptyList())
@@ -204,9 +210,19 @@ class EditorViewModel(private val context: Context, private val uriString: Strin
     fun setFilter(preset: FilterPreset?) {
         // NONE 滤镜视为无滤镜
         val effective = preset?.takeIf { it.style != FilterStyle.NONE }
-        if (_filter.value?.style == effective?.style) return
+        if (_filter.value?.style == effective?.style && _lutFilter.value == null) return
         pushUndo()
         _filter.value = effective
+        _lutFilter.value = null
+        rerenderColor()
+    }
+
+    /** 选择 mola LUT 滤镜(与 ColorMatrix 滤镜互斥)。id=null 清除。 */
+    fun setLutFilter(id: String?) {
+        if (_lutFilter.value == id) return
+        pushUndo()
+        _lutFilter.value = id
+        if (id != null) _filter.value = null
         rerenderColor()
     }
 
@@ -244,11 +260,12 @@ class EditorViewModel(private val context: Context, private val uriString: Strin
 
     /** 重置全部色彩调整 */
     fun resetAdjusts() {
-        if (_adjusts.value == FilterParams() && sharpenAmount == 0f && _filter.value == null) return
+        if (_adjusts.value == FilterParams() && sharpenAmount == 0f && _filter.value == null && _lutFilter.value == null) return
         pushUndo()
         _adjusts.value = FilterParams()
         sharpenAmount = 0f
         _filter.value = null
+        _lutFilter.value = null
         rerenderColor()
     }
 
@@ -258,21 +275,43 @@ class EditorViewModel(private val context: Context, private val uriString: Strin
             delay(80) // 防抖：滑块拖动不连续触发重渲染
             val a = _adjusts.value
             val preset = _filter.value
+            val lutId = _lutFilter.value
             val sharp = sharpenAmount
             val out = withContext(Dispatchers.IO) {
-                var bmp = BitmapFilters.applyFilter(
-                    base,
-                    saturation = if (preset != null) preset.saturation * a.saturation else a.saturation,
-                    contrast = if (preset != null) preset.contrast * a.contrast else a.contrast,
-                    brightness = if (preset != null) preset.brightness + a.brightness else a.brightness,
-                    warmth = if (preset != null) preset.warmth + a.warmth else a.warmth,
-                    vignette = if (preset != null) preset.vignette + a.vignette else a.vignette
-                )
+                var bmp = if (lutId != null) {
+                    // mola LUT 路径：先调色调整(ColorMatrix)，再套 LUT(boost+三线性)
+                    val lut = findLut(lutId)
+                    val adjusted = BitmapFilters.applyFilter(
+                        base,
+                        saturation = a.saturation,
+                        contrast = a.contrast,
+                        brightness = a.brightness,
+                        warmth = a.warmth,
+                        vignette = a.vignette
+                    )
+                    if (lut != null) MolaLut.apply(adjusted, lut) else adjusted
+                } else {
+                    BitmapFilters.applyFilter(
+                        base,
+                        saturation = if (preset != null) preset.saturation * a.saturation else a.saturation,
+                        contrast = if (preset != null) preset.contrast * a.contrast else a.contrast,
+                        brightness = if (preset != null) preset.brightness + a.brightness else a.brightness,
+                        warmth = if (preset != null) preset.warmth + a.warmth else a.warmth,
+                        vignette = if (preset != null) preset.vignette + a.vignette else a.vignette
+                    )
+                }
                 if (sharp > 0f) bmp = BitmapFilters.sharpen(bmp, sharp)
                 bmp
             }
             _editBitmap.value = out
         }
+    }
+
+    /** 按 id 解码 LUT(IO 线程内调用)。 */
+    private fun findLut(id: String): MolaLut.LutData? {
+        val f = LutRepository.find(id) ?: return null
+        val bytes = runCatching { context.assets.open("luts/${f.lutFile}").readBytes() }.getOrNull() ?: return null
+        return MolaLut.decode(bytes)
     }
 
     // ── 文字叠加 ──

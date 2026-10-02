@@ -16,6 +16,7 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Spacer
@@ -63,24 +64,31 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.camera.view.PreviewView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
+import coil.compose.AsyncImage
+import coil.request.ImageRequest
 import com.aicamera.core.design.CamButton
 import com.aicamera.core.design.CamColors
 import com.aicamera.core.design.CamDialog
 import com.aicamera.core.design.CamFrostedPanel
 import com.aicamera.core.design.CamIconButton
+import com.aicamera.core.design.CamShapes
 import com.aicamera.core.design.CamShutter
 import com.aicamera.core.design.CamTextButton
 import com.aicamera.core.design.CamType
+import com.aicamera.core.util.LutRepository
+import com.aicamera.core.util.MolaFilter
 import com.aicamera.domain.model.AiPhase
 import com.aicamera.domain.model.AspectRatio
 import com.aicamera.domain.model.FilterStyle
@@ -88,6 +96,7 @@ import com.aicamera.domain.model.FlashState
 import com.aicamera.domain.model.FrameStyle
 import com.aicamera.domain.model.OverlayState
 import com.aicamera.domain.model.ShootingMode
+import com.aicamera.domain.model.SilkFlowMode
 
 /**
  * v4 相机主页 — 专业暗色相机语言。
@@ -290,19 +299,12 @@ fun CameraScreen(
                     .padding(horizontal = 16.dp, vertical = 12.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                // 行1: 滤镜轮
-                LazyRow(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                // 行1: mola LUT 调色盘(分类条 + 封面轮)
+                LutFilterWheel(
+                    selected = overlay.lutFilterId,
+                    onSelect = { viewModel.selectLutFilter(it) },
                     modifier = Modifier.fillMaxWidth()
-                ) {
-                    items(FilterStyle.entries) { f ->
-                        FilterChip(
-                            label = f.label,
-                            selected = overlay.filterStyle == f,
-                            onClick = { viewModel.selectFilter(f) }
-                        )
-                    }
-                }
+                )
 
                 Spacer(Modifier.height(10.dp))
 
@@ -332,9 +334,22 @@ fun CameraScreen(
                     )
                     Spacer(Modifier.width(8.dp))
                     CamTextButton(
-                        text = "相框 ${overlay.frameStyle.label.removePrefix("相框")}",
+                        text = if (overlay.frameStyle == FrameStyle.NONE) "相框" else "相框 ${overlay.frameStyle.label}",
                         selected = overlay.frameStyle != FrameStyle.NONE,
                         onClick = { viewModel.cycleFrameStyle() },
+                        modifier = Modifier.padding(horizontal = 4.dp)
+                    )
+                    // mola 实况照片 / 满血像素 开关
+                    CamTextButton(
+                        text = "实况",
+                        selected = overlay.livePhotoMode,
+                        onClick = { viewModel.toggleLivePhoto() },
+                        modifier = Modifier.padding(horizontal = 4.dp)
+                    )
+                    CamTextButton(
+                        text = "满血",
+                        selected = overlay.fullResMode,
+                        onClick = { viewModel.toggleFullRes() },
                         modifier = Modifier.padding(horizontal = 4.dp)
                     )
                 }
@@ -358,12 +373,15 @@ fun CameraScreen(
                         onClick = {
                             if (isRecording) {
                                 viewModel.toggleVideo { }
-                            } else if (overlay.shootingMode == ShootingMode.VIDEO) {
+                            } else if (overlay.shootingMode == ShootingMode.VIDEO && overlay.silkFlowMode == SilkFlowMode.NONE) {
                                 viewModel.toggleVideo { }
                             } else {
                                 viewModel.manualShutter()
                             }
                         },
+                        holdMode = overlay.shootingMode == ShootingMode.VIDEO && overlay.silkFlowMode != SilkFlowMode.NONE,
+                        onHoldStart = { viewModel.startSilkFlow() },
+                        onHoldEnd = { viewModel.stopSilkFlow() },
                         modifier = Modifier.size(76.dp)
                     )
                     CamTextButton(
@@ -379,18 +397,32 @@ fun CameraScreen(
 
                 Spacer(Modifier.height(10.dp))
 
-                // 行4: 模式栏
+                // 行4: 模式栏 (mola: 照片/视频/夜间 + 流光快门子模式)
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
                     ShootingMode.entries.forEach { mode ->
                         CamTextButton(
-                            text = mode.label,
+                            text = if (mode == ShootingMode.VIDEO && overlay.silkFlowMode != SilkFlowMode.NONE)
+                                overlay.silkFlowMode.label else mode.label,
                             selected = overlay.shootingMode == mode,
-                            onClick = { viewModel.selectMode(mode) },
+                            onClick = {
+                                viewModel.selectMode(mode)
+                                viewModel.selectSilkFlow(SilkFlowMode.NONE)
+                            },
+                            modifier = Modifier.padding(horizontal = 2.dp)
+                        )
+                    }
+                    // 流光快门子模式
+                    SilkFlowMode.entries.drop(1).forEach { sm ->
+                        CamTextButton(
+                            text = sm.label,
+                            selected = overlay.silkFlowMode == sm,
+                            onClick = { viewModel.selectSilkFlow(sm) },
                             modifier = Modifier.padding(horizontal = 2.dp)
                         )
                     }
@@ -503,46 +535,94 @@ fun CameraScreen(
     }
 }
 
-/** 滤镜胶囊: 微小圆点 + 名称 (选中 = 强调) */
+/** mola LUT 调色盘: 分类条 + 滤镜封面轮(151 款, 与编辑器一致) */
 @Composable
-private fun FilterChip(
-    label: String,
-    selected: Boolean,
-    onClick: () -> Unit
+private fun LutFilterWheel(
+    selected: String?,
+    onSelect: (String?) -> Unit,
+    modifier: Modifier = Modifier
 ) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier
-            .clip(androidx.compose.foundation.shape.RoundedCornerShape(14.dp))
-            .background(if (selected) CamColors.AccentDim else Color.Transparent)
-            .clickable(onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 8.dp)
-    ) {
-        Box(
-            modifier = Modifier
-                .size(8.dp)
-                .clip(CircleShape)
-                .background(
-                    when (label) {
-                        "原图" -> Color.White
-                        "胶片" -> Color(0xFFE8C4A0)
-                        "清新" -> Color(0xFFA8E6CF)
-                        "复古" -> Color(0xFFD4A574)
-                        "黑白" -> Color(0xFF9E9E9E)
-                        "暖阳" -> Color(0xFFF5C26B)
-                        "冷调" -> Color(0xFF6FA8DC)
-                        "美食" -> Color(0xFFF0A868)
-                        "人像" -> Color(0xFFF4B8C8)
-                        "夜城" -> Color(0xFF5C6BC0)
-                        else -> Color.White
-                    }
+    val context = LocalContext.current
+    var filters by remember { mutableStateOf<List<MolaFilter>>(emptyList()) }
+    var categories by remember { mutableStateOf<List<String>>(emptyList()) }
+    var selectedCategory by remember { mutableStateOf("全部") }
+
+    LaunchedEffect(Unit) {
+        LutRepository.ensureLoaded(context)
+        filters = LutRepository.allFilters()
+        categories = listOf("全部") + LutRepository.categories()
+    }
+
+    Column(modifier) {
+        // 分类条
+        LazyRow(
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            items(categories) { cat ->
+                CamTextButton(
+                    text = cat,
+                    selected = selectedCategory == cat,
+                    onClick = { selectedCategory = cat },
+                    modifier = Modifier.padding(horizontal = 1.dp)
                 )
-        )
-        Spacer(Modifier.width(6.dp))
-        Text(
-            text = label,
-            color = if (selected) CamColors.Accent else CamColors.White,
-            style = CamType.BodyMedium
-        )
+            }
+        }
+        Spacer(Modifier.height(8.dp))
+
+        // 封面轮(原图 + 分类内滤镜)
+        LazyRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            item(key = "none") {
+                Column(
+                    modifier = Modifier
+                        .width(56.dp)
+                        .clip(CamShapes.Small)
+                        .background(if (selected == null) CamColors.AccentDim else CamColors.SurfaceElevated)
+                        .clickable { onSelect(null) }
+                        .padding(vertical = 4.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text("原图", color = CamColors.White, style = CamType.Secondary, maxLines = 1)
+                }
+            }
+            val shown = if (selectedCategory == "全部") filters
+            else filters.filter { it.category == selectedCategory }
+            items(shown, key = { it.id }) { f ->
+                val isSelected = selected == f.id
+                Column(
+                    modifier = Modifier
+                        .width(56.dp)
+                        .clip(CamShapes.Small)
+                        .background(if (isSelected) CamColors.AccentDim else Color.Transparent)
+                        .clickable { onSelect(if (isSelected) null else f.id) }
+                        .padding(2.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    AsyncImage(
+                        model = ImageRequest.Builder(context)
+                            .data("file:///android_asset/luts/${f.coverFile}")
+                            .crossfade(true)
+                            .build(),
+                        contentDescription = f.label,
+                        modifier = Modifier
+                            .size(48.dp)
+                            .clip(CamShapes.Small),
+                        contentScale = ContentScale.Crop
+                    )
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        f.label,
+                        color = if (isSelected) CamColors.Accent else CamColors.White,
+                        style = CamType.Secondary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        fontSize = 10.sp
+                    )
+                }
+            }
+        }
     }
 }

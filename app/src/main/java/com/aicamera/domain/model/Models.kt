@@ -41,14 +41,21 @@ data class AnalysisResult(
     val timestampMs: Long = 0L
 )
 
-/** 拍摄模式 */
+/** 拍摄模式 (mola 模式栏: 照片/视频/夜间 + 人像/美食/风景) */
 enum class ShootingMode(val label: String, val icon: String, val desc: String) {
-    AUTO("自动", "A", "智能识别场景"),
+    AUTO("照片", "照", "智能识别场景"),
     PORTRAIT("人像", "人", "人脸对准右上三分点"),
-    NIGHT("夜景", "夜", "低噪长曝光"),
+    NIGHT("夜间", "夜", "低噪长曝光"),
     FOOD("美食", "食", "45° 俯拍更佳"),
     LANDSCAPE("风景", "景", "地平线下三分之一"),
     VIDEO("视频", "▶", "居中保持水平")
+}
+
+/** 流光快门子模式 (mola: 按住快门拍摄, 保持手机稳定) */
+enum class SilkFlowMode(val label: String) {
+    NONE("流光快门"),
+    SILK("丝绢流水"),
+    LIGHT("光轨/车流")
 }
 
 /** 滤镜风格 */
@@ -65,12 +72,26 @@ enum class FilterStyle(val label: String, val accent: Long) {
     NIGHT_CITY("夜城", 0xFF5C6BC0)
 }
 
-/** 相框风格 */
-enum class FrameStyle(val label: String) {
-    NONE("无相框"),
-    FILM("胶片框"),
-    DATE("日期戳"),
-    BRAND("品牌框")
+/** 相框风格(mola 17 款) */
+enum class FrameStyle(val label: String, val accent: Long = 0xFFFFFFFF) {
+    NONE("无相框", 0xFFFFFFFF),
+    STANDARD("标准", 0xFFFFFFFF),
+    PEARL("珠光", 0xFFF5E6D3),
+    GOLD("金色", 0xFFD4A373),
+    ROSE_GOLD("玫瑰金", 0xFFE8B4A0),
+    AMBER("琥珀色", 0xFFF09A3E),
+    COOL_ROSE("冷调玫瑰金", 0xFFC9B8C8),
+    CREAM_FILM("奶油胶片", 0xFFF0E6D2),
+    AIRY_TONE("日系清透", 0xFFE8F0F2),
+    TEAL_CINE("青橙电影", 0xFF3E8E8E),
+    FOREST_GREEN("森系绿调", 0xFF6B8F5E),
+    FILM_BLUE("富士蓝", 0xFF6FA8DC),
+    RETRO_SUN("柯达暖阳", 0xFFF5C26B),
+    SOFT_PINK("韩系粉调", 0xFFF4B8C8),
+    COOL_WHITE("冷白清透", 0xFFE6F0F5),
+    CRIMSON("中国红", 0xFFC0392B),
+    BLOSSOM_HAZE("繁花如梦", 0xFFD8A8C8),
+    NATURAL_PRIME("徕卡自然", 0xFF7A8C6E)
 }
 
 /** 画幅比例 */
@@ -179,7 +200,15 @@ data class OverlayState(
     val frameStyle: FrameStyle = FrameStyle.NONE,
     val timerSeconds: Int = 0,
     val flashState: FlashState = FlashState.OFF,
-    val isRecording: Boolean = false
+    val isRecording: Boolean = false,
+    /** mola 3D LUT 滤镜 id(assets/luts/),null = 原图 */
+    val lutFilterId: String? = null,
+    /** mola 流光快门子模式 (NONE=关, SILK=丝绢流水, LIGHT=光轨/车流) */
+    val silkFlowMode: SilkFlowMode = SilkFlowMode.NONE,
+    /** mola 满血像素: 无损高画质保存 */
+    val fullResMode: Boolean = false,
+    /** mola 实况照片: 拍照同时录制 3 秒动态 */
+    val livePhotoMode: Boolean = false
 )
 
 /** 相册条目 */

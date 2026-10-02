@@ -19,6 +19,8 @@ import com.aicamera.ai.AiGuideEngine
 import com.aicamera.ai.LocalAiRules
 import com.aicamera.camera.AnalyzerManager
 import com.aicamera.camera.CameraManager
+import com.aicamera.core.util.LutRepository
+import com.aicamera.core.util.MolaLut
 import com.aicamera.data.PhotoStore
 import com.aicamera.data.SettingsRepository
 import com.aicamera.domain.model.AiPhase
@@ -37,11 +39,14 @@ import com.aicamera.domain.model.GuidanceType
 import com.aicamera.domain.model.OverlayState
 import com.aicamera.domain.model.Severity
 import com.aicamera.domain.model.ShootingMode
+import com.aicamera.domain.model.SilkFlowMode
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 
 /**
@@ -61,6 +66,11 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
     // ── 相机控件状态 ──
     private var currentMode = ShootingMode.AUTO
     private var currentFilter = FilterStyle.NONE
+    private var currentLutFilter: String? = null
+    /** mola 流光快门子模式 */
+    private var currentSilkFlow = SilkFlowMode.NONE
+    private var currentFullRes = false
+    private var currentLivePhoto = false
     private var aiAssistActive = false
     private var aiPhase = AiPhase.IDLE
     private var aiPromptText = ""
@@ -182,6 +192,10 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
                 horizonDegrees = _horizonDegrees,
                 shootingMode = currentMode,
                 filterStyle = currentFilter,
+                lutFilterId = currentLutFilter,
+                silkFlowMode = currentSilkFlow,
+                fullResMode = currentFullRes,
+                livePhotoMode = currentLivePhoto,
                 aiAssistActive = aiAssistActive,
                 aiTarget = if (aiAssistActive && aiPhase == AiPhase.GUIDING) {
                     aiGuide.createTarget(currentMode, null, 1080f, 1920f)
@@ -247,6 +261,10 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
             horizonDegrees = _horizonDegrees,
             shootingMode = currentMode,
             filterStyle = currentFilter,
+            lutFilterId = currentLutFilter,
+            silkFlowMode = currentSilkFlow,
+            fullResMode = currentFullRes,
+            livePhotoMode = currentLivePhoto,
             aiAssistActive = aiAssistActive,
             aiTarget = aiTarget,
             aiPhotographer = photographerState(),
@@ -354,7 +372,91 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
         if (aiPhase != AiPhase.IDLE) aiPhase = AiPhase.PLAN_READY
     }
 
-    fun selectFilter(f: FilterStyle) { currentFilter = f }
+    /** mola 流光快门子模式切换 (丝绢流水/光轨车流) */
+    fun selectSilkFlow(mode: SilkFlowMode) {
+        currentSilkFlow = mode
+        _toastMessage.value = when (mode) {
+            SilkFlowMode.NONE -> "流光快门已关闭"
+            SilkFlowMode.SILK -> "丝绢流水 · 按住快门拍摄，保持手机稳定"
+            SilkFlowMode.LIGHT -> "光轨/车流 · 按住快门拍摄，保持手机稳定"
+        }
+        if (mode != SilkFlowMode.NONE) {
+            currentMode = ShootingMode.VIDEO
+        }
+    }
+
+    /** 流光快门：按住开始连拍 */
+    fun startSilkFlow() {
+        if (currentSilkFlow == SilkFlowMode.NONE) return
+        _isRecording.value = true
+        cameraManager?.startBurstShots()
+    }
+
+    /** 流光快门：松手合成并保存 */
+    fun stopSilkFlow() {
+        if (currentSilkFlow == SilkFlowMode.NONE) return
+        _isRecording.value = false
+        val lightTrail = currentSilkFlow == SilkFlowMode.LIGHT
+        cameraManager?.finishBurst(lightTrail) { file ->
+            if (file != null) {
+                val ctx = getApplication<Application>()
+                val lutId = currentLutFilter
+                var saved = false
+                if (lutId != null) {
+                    saved = kotlinx.coroutines.runBlocking {
+                        val lut = findLut(lutId)
+                        if (lut != null) {
+                            val bmp = android.graphics.BitmapFactory.decodeFile(file.absolutePath)
+                            if (bmp != null) {
+                                val out = MolaLut.apply(bmp, lut)
+                                val outFile = File(ctx.cacheDir, "edited_lut_${System.currentTimeMillis()}.jpg")
+                                outFile.outputStream().use { os ->
+                                    out.compress(android.graphics.Bitmap.CompressFormat.JPEG, 95, os)
+                                }
+                                out.recycle(); bmp.recycle()
+                                PhotoStore.saveImage(ctx, outFile)
+                            } else false
+                        } else PhotoStore.saveImage(ctx, file)
+                    }
+                } else {
+                    saved = PhotoStore.saveImage(ctx, file)
+                }
+                if (saved) {
+                    _toastMessage.value = if (lightTrail) "光轨/车流已保存到相册" else "丝绢流水已保存到相册"
+                    haptic()
+                } else {
+                    _toastMessage.value = "保存失败"
+                }
+                file.delete()
+            } else {
+                _toastMessage.value = "流光拍摄失败"
+            }
+        }
+    }
+
+    fun selectFilter(f: FilterStyle) {
+        currentFilter = f
+        currentLutFilter = null
+        _toastMessage.value = f.label
+    }
+
+    /** mola LUT 滤镜选择(151 款, id=assets/luts 文件名) */
+    fun selectLutFilter(id: String?) {
+        currentLutFilter = id
+        _toastMessage.value = id?.let { "滤镜已选择" } ?: "原图"
+    }
+
+    /** mola 满血像素开关: 高画质模式 */
+    fun toggleFullRes() {
+        currentFullRes = !currentFullRes
+        _toastMessage.value = if (currentFullRes) "满血像素已开启" else "满血像素已关闭"
+    }
+
+    /** mola 实况照片开关: 拍照同时录 3 秒动态 */
+    fun toggleLivePhoto() {
+        currentLivePhoto = !currentLivePhoto
+        _toastMessage.value = if (currentLivePhoto) "实况照片已开启" else "实况照片已关闭"
+    }
 
     fun toggleAiAssist() {
         aiAssistActive = !aiAssistActive
@@ -449,10 +551,24 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
 
     fun cycleFrameStyle() {
         currentFrameStyle = when (currentFrameStyle) {
-            FrameStyle.NONE -> FrameStyle.FILM
-            FrameStyle.FILM -> FrameStyle.DATE
-            FrameStyle.DATE -> FrameStyle.BRAND
-            FrameStyle.BRAND -> FrameStyle.NONE
+            FrameStyle.NONE -> FrameStyle.STANDARD
+            FrameStyle.STANDARD -> FrameStyle.PEARL
+            FrameStyle.PEARL -> FrameStyle.GOLD
+            FrameStyle.GOLD -> FrameStyle.ROSE_GOLD
+            FrameStyle.ROSE_GOLD -> FrameStyle.AMBER
+            FrameStyle.AMBER -> FrameStyle.COOL_ROSE
+            FrameStyle.COOL_ROSE -> FrameStyle.CREAM_FILM
+            FrameStyle.CREAM_FILM -> FrameStyle.AIRY_TONE
+            FrameStyle.AIRY_TONE -> FrameStyle.TEAL_CINE
+            FrameStyle.TEAL_CINE -> FrameStyle.FOREST_GREEN
+            FrameStyle.FOREST_GREEN -> FrameStyle.FILM_BLUE
+            FrameStyle.FILM_BLUE -> FrameStyle.RETRO_SUN
+            FrameStyle.RETRO_SUN -> FrameStyle.SOFT_PINK
+            FrameStyle.SOFT_PINK -> FrameStyle.COOL_WHITE
+            FrameStyle.COOL_WHITE -> FrameStyle.CRIMSON
+            FrameStyle.CRIMSON -> FrameStyle.BLOSSOM_HAZE
+            FrameStyle.BLOSSOM_HAZE -> FrameStyle.NATURAL_PRIME
+            FrameStyle.NATURAL_PRIME -> FrameStyle.NONE
         }
         _toastMessage.value = "相框：${currentFrameStyle.label}"
     }
@@ -463,6 +579,11 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
 
     /** 快门（支持定时） */
     fun manualShutter() {
+        // mola 实况照片: 拍照 + 同步录 3 秒动态
+        if (currentLivePhoto && currentSilkFlow == SilkFlowMode.NONE && currentMode != ShootingMode.VIDEO) {
+            livePhotoShutter()
+            return
+        }
         val timer = currentTimer
         if (timer > 0) {
             _toastMessage.value = "定时 ${timer} 秒后拍摄"
@@ -472,6 +593,25 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
             }
         } else {
             takePhoto(auto = false)
+        }
+    }
+
+    /** 实况照片: 按快门 = 拍照 + 同步录制 3 秒动态并保存 */
+    private fun livePhotoShutter() {
+        takePhoto(auto = false)
+        if (_isRecording.value) return
+        cameraManager?.startRecording { file ->
+            if (file != null) {
+                val ctx = getApplication<Application>()
+                PhotoStore.saveVideo(ctx, file)
+                file.delete()
+                _toastMessage.value = "实况照片·动态已保存到相册"
+                haptic()
+            }
+        }
+        viewModelScope.launch {
+            delay(3000)
+            cameraManager?.stopRecording()
         }
     }
 
@@ -485,7 +625,30 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
 
     private fun savePhoto(file: File, auto: Boolean) {
         val ctx = getApplication<Application>()
-        val saved = PhotoStore.saveImage(ctx, file)
+        // mola LUT 滤镜: 拍照后应用 3D LUT(未选滤镜则原样保存)
+        val lutId = currentLutFilter
+        var saved: Boolean
+        if (lutId != null) {
+            saved = viewModelScope.let { scope ->
+                kotlinx.coroutines.runBlocking {
+                    val lut = findLut(lutId)
+                    if (lut != null) {
+                        val bmp = android.graphics.BitmapFactory.decodeFile(file.absolutePath)
+                        if (bmp != null) {
+                            val out = MolaLut.apply(bmp, lut)
+                            val outFile = File(ctx.cacheDir, "edited_lut_${System.currentTimeMillis()}.jpg")
+                            outFile.outputStream().use { os ->
+                                out.compress(android.graphics.Bitmap.CompressFormat.JPEG, 95, os)
+                            }
+                            out.recycle(); bmp.recycle()
+                            PhotoStore.saveImage(ctx, outFile)
+                        } else false
+                    } else PhotoStore.saveImage(ctx, file)
+                }
+            }
+        } else {
+            saved = PhotoStore.saveImage(ctx, file)
+        }
         if (saved) {
             _toastMessage.value = if (auto) "已自动拍摄并保存" else "已保存到相册"
             haptic()
@@ -493,6 +656,13 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
         } else {
             _toastMessage.value = "保存失败"
         }
+    }
+
+    private suspend fun findLut(id: String): MolaLut.LutData? = withContext(Dispatchers.IO) {
+        val f = LutRepository.find(id) ?: return@withContext null
+        try {
+            MolaLut.decode(getApplication<Application>().assets.open("luts/${f.lutFile}").readBytes())
+        } catch (_: Exception) { null }
     }
 
     /** 录像：按下开始，抬起停止 */

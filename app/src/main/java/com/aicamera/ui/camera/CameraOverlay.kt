@@ -16,7 +16,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.aicamera.core.design.CamColors
 import com.aicamera.core.design.CamType
-import com.aicamera.core.design.PulsingTarget
+import com.aicamera.core.design.MolaTargetRing
 import com.aicamera.core.design.ScoreBadge
 import com.aicamera.domain.model.GuidanceType
 import com.aicamera.domain.model.OverlayState
@@ -113,15 +113,13 @@ fun CameraOverlay(
             }
         }
 
-        // ── AI 目标圈 (脉动) ──
+        // ── AI 目标圈 (mola 风格金色脉动圈) ──
         state.aiTarget?.let { t ->
-            PulsingTarget(
+            MolaTargetRing(
                 cx = t.cx,
                 cy = t.cy,
                 radiusPx = t.radiusNormalized * 1080f.coerceAtLeast(1f),
                 reached = t.reached,
-                moveX = t.moveX,
-                moveY = t.moveY,
                 modifier = Modifier.fillMaxSize()
             )
         }
