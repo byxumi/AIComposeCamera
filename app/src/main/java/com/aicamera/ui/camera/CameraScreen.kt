@@ -196,6 +196,35 @@ fun CameraScreen(
                 }
         )
 
+        // ── 录制计时 HUD (mola rj0.java:750-775: 8dp 视频红圆点 + 计时 mm:ss 纯白 14sp) ──
+        val recordElapsed by viewModel.recordElapsedMs.collectAsState()
+        if (isRecording) {
+            Row(
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .statusBarsPadding()
+                    .padding(top = 12.dp)
+                    .clip(CircleShape)
+                    .background(CamColors.Black.copy(alpha = 0.45f))
+                    .padding(horizontal = 14.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(8.dp)
+                        .clip(CircleShape)
+                        .background(Color(0xFFE5484D))
+                )
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    text = formatRecordTime(recordElapsed),
+                    color = Color.White,
+                    style = CamType.BodyMedium,
+                    fontWeight = FontWeight.Medium
+                )
+            }
+        }
+
         // ── Toast 浮层 ──
         AnimatedVisibility(
             visible = toast != null,
@@ -768,4 +797,15 @@ private fun LutFilterWheel(
             }
         }
     }
+}
+
+/** mola rj0.java E0(): 录制计时格式 — 超 1 小时 h:mm:ss, 否则 mm:ss */
+private fun formatRecordTime(elapsedMs: Long): String {
+    var sec = elapsedMs / 1000
+    if (sec < 0) sec = 0
+    val h = sec / 3600
+    val m = (sec % 3600) / 60
+    val s = sec % 60
+    return if (h > 0) String.format(Locale.US, "%d:%02d:%02d", h, m, s)
+    else String.format(Locale.US, "%02d:%02d", m, s)
 }

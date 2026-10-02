@@ -9,6 +9,7 @@ import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
 import android.os.Build
+import android.os.SystemClock
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
@@ -43,7 +44,9 @@ import com.aicamera.domain.model.Severity
 import com.aicamera.domain.model.ShootingMode
 import com.aicamera.domain.model.SilkFlowMode
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -99,6 +102,10 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
     private val _isRecording = MutableStateFlow(false)
     val isRecording: StateFlow<Boolean> = _isRecording.asStateFlow()
 
+    private val _recordElapsedMs = MutableStateFlow(0L)
+    val recordElapsedMs: StateFlow<Long> = _recordElapsedMs.asStateFlow()
+    private var recordTimerJob: Job? = null
+
     private val _cameraReady = MutableStateFlow(false)
     val cameraReady: StateFlow<Boolean> = _cameraReady.asStateFlow()
 
@@ -153,7 +160,10 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
             mgr.isCameraReady.collect { ready -> _cameraReady.value = ready }
         }
         viewModelScope.launch {
-            mgr.isRecording.collect { r -> _isRecording.value = r }
+            mgr.isRecording.collect { r ->
+                _isRecording.value = r
+                if (r) startRecordTimer() else stopRecordTimer()
+            }
         }
         viewModelScope.launch {
             mgr.errorMessage.collect { msg -> _errorMessage.value = msg }
@@ -422,6 +432,7 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
     fun startSilkFlow() {
         if (currentSilkFlow == SilkFlowMode.NONE) return
         _isRecording.value = true
+        startRecordTimer()
         cameraManager?.startBurstShots()
     }
 
@@ -429,6 +440,7 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
     fun stopSilkFlow() {
         if (currentSilkFlow == SilkFlowMode.NONE) return
         _isRecording.value = false
+        stopRecordTimer()
         val lightTrail = currentSilkFlow == SilkFlowMode.LIGHT
         cameraManager?.finishBurst(lightTrail) { file ->
             if (file != null) {
@@ -762,7 +774,9 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
         val mgr = cameraManager ?: return
         if (_isRecording.value) {
             mgr.stopRecording()
+            stopRecordTimer()
         } else {
+            startRecordTimer()
             mgr.startRecording { file ->
                 if (file != null) {
                     val ctx = getApplication<Application>()
@@ -774,6 +788,23 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
             }
         }
         onComplete()
+    }
+
+    private fun startRecordTimer() {
+        recordTimerJob?.cancel()
+        _recordElapsedMs.value = 0L
+        val start = SystemClock.elapsedRealtime()
+        recordTimerJob = viewModelScope.launch {
+            while (coroutineContext.isActive) {
+                _recordElapsedMs.value = SystemClock.elapsedRealtime() - start
+                delay(200)
+            }
+        }
+    }
+
+    private fun stopRecordTimer() {
+        recordTimerJob?.cancel()
+        recordTimerJob = null
     }
 
     private fun haptic() {
