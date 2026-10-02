@@ -2,19 +2,23 @@ package com.aicamera.ui.navigation
 
 import android.net.Uri
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PhotoCamera
@@ -133,7 +137,12 @@ private val bottomTabs = listOf(
     BottomTab("我的", Icons.Filled.Person, Routes.PROFILE)
 )
 
-/** mola 风格底部 tab: 黑金, 选中项金色胶囊 + 文字上浮 */
+/**
+ * mola 风格底部 tab(按 wx1.java 精确复刻):
+ * - 选中态: 深金 16% alpha 胶囊底 + 深金文字 + 顶部 2f 金色分隔线 + 图标放大 1.0(未选 0.96)
+ * - 动画: 颜色 220ms, 缩放 spring(damping 0.8, 400ms)
+ * - 底栏高度 52dp + 系统导航栏 inset + 顶部 20dp 内边距
+ */
 @Composable
 private fun MolaBottomBar(
     current: String,
@@ -143,8 +152,7 @@ private fun MolaBottomBar(
         modifier = Modifier
             .fillMaxWidth()
             .background(CamColors.Surface)
-            .navigationBarsPadding()
-            .height(64.dp),
+            .navigationBarsPadding(),
         horizontalArrangement = Arrangement.SpaceEvenly,
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -152,39 +160,60 @@ private fun MolaBottomBar(
             val selected = current == tab.route
             val bg by animateColorAsState(
                 targetValue = if (selected) CamColors.AccentDim else CamColors.Surface,
+                animationSpec = tween(220),
                 label = "tabBg"
             )
             val scale by animateFloatAsState(
-                targetValue = if (selected) 1f else 0.86f,
+                targetValue = if (selected) 1f else 0.96f,
+                animationSpec = spring(dampingRatio = 0.8f, stiffness = Spring.StiffnessMedium),
                 label = "tabScale"
             )
             val tint by animateColorAsState(
-                targetValue = if (selected) CamColors.Accent else CamColors.TertiaryText,
+                targetValue = if (selected) CamColors.AccentStrong else CamColors.TertiaryText,
+                animationSpec = tween(220),
                 label = "tabText"
             )
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
+            Box(
+                contentAlignment = Alignment.Center,
                 modifier = Modifier
-                    .clip(CircleShape)
-                    .background(bg)
-                    .clickable { onSelect(tab.route) }
                     .width(72.dp)
-                    .height(52.dp),
-                verticalArrangement = Arrangement.Center
+                    .height(52.dp)
+                    .clickable { onSelect(tab.route) }
             ) {
-                Box(modifier = Modifier.size(20.dp * scale)) {
-                    Icon(
-                        imageVector = tab.icon,
-                        contentDescription = tab.label,
-                        tint = tint,
-                        modifier = Modifier.size(20.dp)
+                // 选中: 顶部金色分隔线
+                if (selected) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopCenter)
+                            .width(20.dp)
+                            .height(2.dp)
+                            .background(CamColors.AccentStrong)
                     )
                 }
-                Text(
-                    text = tab.label,
-                    color = tint,
-                    fontSize = 10.sp
-                )
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(bg)
+                        .width(64.dp)
+                        .height(44.dp),
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    Box(modifier = Modifier.size(20.dp * scale)) {
+                        Icon(
+                            imageVector = tab.icon,
+                            contentDescription = tab.label,
+                            tint = tint,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        text = tab.label,
+                        color = tint,
+                        fontSize = 10.sp
+                    )
+                }
             }
         }
     }

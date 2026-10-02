@@ -54,6 +54,9 @@ class CameraManager(
     private val _errorMessage = MutableStateFlow<String?>(null)
     val errorMessage: StateFlow<String?> = _errorMessage.asStateFlow()
 
+    private val _isFront = MutableStateFlow(false)
+    val isFront: StateFlow<Boolean> = _isFront.asStateFlow()
+
     private var cameraProvider: ProcessCameraProvider? = null
     private var previewUseCase: Preview? = null
     private var imageCapture: ImageCapture? = null
@@ -170,6 +173,7 @@ class CameraManager(
         } else {
             CameraSelector.LENS_FACING_BACK
         }
+        _isFront.value = lensFacing == CameraSelector.LENS_FACING_FRONT
         bindUseCases()
     }
 

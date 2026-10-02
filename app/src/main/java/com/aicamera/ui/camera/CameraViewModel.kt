@@ -110,6 +110,9 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
     private val _zoom = MutableStateFlow(1f)
     val zoom: StateFlow<Float> = _zoom.asStateFlow()
 
+    private val _isFront = MutableStateFlow(false)
+    val isFront: StateFlow<Boolean> = _isFront.asStateFlow()
+
     // 传感器
     private var sensorManager: SensorManager? = null
     private var gravity = FloatArray(3)
@@ -157,6 +160,9 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
         }
         viewModelScope.launch {
             mgr.zoom.collect { z -> _zoom.value = z }
+        }
+        viewModelScope.launch {
+            mgr.isFront.collect { f -> _isFront.value = f }
         }
         mgr.start()
         pendingPreview?.let { (provider, pv) ->

@@ -126,24 +126,31 @@ fun CamTextButton(
     selected: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    tint: Color = CamColors.White
+    tint: Color = CamColors.White,
+    compact: Boolean = false
 ) {
     Box(
         modifier = modifier
             .clip(CamShapes.Control)
-            .background(if (selected) CamColors.AccentDim else Color.Transparent)
+            .then(
+                if (selected) Modifier.background(
+                    Brush.horizontalGradient(
+                        listOf(CamColors.AccentLight, CamColors.AccentStrong)
+                    )
+                ) else Modifier
+            )
             .border(
                 width = if (selected) 1.dp else 0.dp,
                 color = if (selected) CamColors.Accent.copy(alpha = 0.6f) else Color.Transparent,
                 shape = CamShapes.Control
             )
             .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 10.dp),
+            .padding(horizontal = if (compact) 10.dp else 16.dp, vertical = if (compact) 6.dp else 10.dp),
         contentAlignment = Alignment.Center
     ) {
         Text(
             text,
-            color = if (selected) CamColors.Accent else tint,
+            color = if (selected) CamColors.Black else tint,
             style = CamType.BodyMedium,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
@@ -151,7 +158,7 @@ fun CamTextButton(
     }
 }
 
-/** 快门: 白色双环 (录制时为红方角) — 按压回弹 0.92; holdMode 支持按住拍摄 (流光快门) */
+/** 快门 — mola 精确复刻 (rj0.java b0/e0): 80dp 外环深金 22% + 64dp 内环深金 12% + 金色渐变描边; 视频模式内圆红色 0xFFE5484D, 录制中 28dp 红色停止方块 */
 @Composable
 fun CamShutter(
     isRecording: Boolean,
@@ -160,22 +167,23 @@ fun CamShutter(
     enabled: Boolean = true,
     holdMode: Boolean = false,
     onHoldStart: () -> Unit = {},
-    onHoldEnd: () -> Unit = {}
+    onHoldEnd: () -> Unit = {},
+    video: Boolean = false
 ) {
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
     val scale by animateFloatAsState(
         targetValue = if (pressed) 0.92f else 1f,
-        animationSpec = spring(dampingRatio = 0.55f, stiffness = Spring.StiffnessMedium),
-        label = "shutterPress"
+        animationSpec = spring(dampingRatio = 0.5f, stiffness = Spring.StiffnessMedium),
+        label = "shutterScale"
     )
-    val outer = if (isRecording) CamColors.Error else CamColors.White
     Box(
         modifier = modifier
-            .size(76.dp)
+            .size(80.dp)
             .scale(scale)
             .clip(CircleShape)
-            .border(4.dp, outer, CircleShape)
+            .background(CamColors.AccentStrong.copy(alpha = 0.22f))
+            .border(2.dp, CamColors.AccentLight.copy(alpha = 0.55f), CircleShape)
             .then(
                 if (holdMode) {
                     Modifier.pointerInput(Unit) {
@@ -191,15 +199,20 @@ fun CamShutter(
                         )
                     }
                 } else Modifier
-            )
-            .padding(5.dp),
+            ),
         contentAlignment = Alignment.Center
     ) {
         Box(
             modifier = Modifier
-                .size(if (isRecording) 34.dp else 58.dp)
-                .clip(CamShapes.Small)
-                .background(outer)
+                .size(if (isRecording) 64.dp else 64.dp)
+                .clip(CircleShape)
+                .background(
+                    when {
+                        isRecording -> CamColors.Error
+                        video -> Color(0xFFE5484D)
+                        else -> CamColors.AccentStrong.copy(alpha = 0.12f)
+                    }
+                )
                 .clickable(
                     enabled = enabled && !holdMode,
                     interactionSource = interaction,
@@ -207,6 +220,14 @@ fun CamShutter(
                     onClick = onClick
                 )
         )
+        if (isRecording) {
+            Box(
+                modifier = Modifier
+                    .size(28.dp)
+                    .clip(CamShapes.Small)
+                    .background(CamColors.Error)
+            )
+        }
     }
 }
 

@@ -21,7 +21,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -85,7 +84,6 @@ import coil.request.ImageRequest
 import com.aicamera.core.design.CamButton
 import com.aicamera.core.design.CamColors
 import com.aicamera.core.design.CamDialog
-import com.aicamera.core.design.CamFrostedPanel
 import com.aicamera.core.design.CamIconButton
 import com.aicamera.core.design.CamShapes
 import com.aicamera.core.design.CamShutter
@@ -105,8 +103,9 @@ import com.aicamera.domain.model.ShootingMode
 import com.aicamera.domain.model.SilkFlowMode
 
 /**
- * v4 相机主页 — 专业暗色相机语言。
- * 纯黑取景器 + 白色高对比控件 + 单强调色 [CamColors.Accent] + 唯一受控玻璃 [CamFrostedPanel]。
+ * v5.2 mola 相机主页 — 按 rj0.java 逐元素复刻。
+ * 底部: 调色盘(弹出层) + 变焦行 + AI 辅助/快门/AI 摄影师 + 模式栏。
+ * 顶部: 画幅 / 闪光 / 定时 / 曝光 / 切换 / 设置。
  */
 @Composable
 fun CameraScreen(
@@ -122,9 +121,11 @@ fun CameraScreen(
     val isRecording by viewModel.isRecording.collectAsState()
     val cameraReady by viewModel.cameraReady.collectAsState()
     val zoom by viewModel.zoom.collectAsState()
+    val isFront by viewModel.isFront.collectAsState()
 
     var showAiDialog by remember { mutableStateOf(false) }
     var aiPrompt by remember { mutableStateOf("") }
+    var showPalette by remember { mutableStateOf(false) }
 
     // 预览视图
     val previewView = remember {
@@ -258,6 +259,22 @@ fun CameraScreen(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
+            Spacer(Modifier.width(44.dp))
+            // 镜头标识 (mola: 主摄/超广角/长焦/前摄)
+            Text(
+                text = if (isFront) "前摄" else when {
+                    zoom < 0.9f -> "超广角"
+                    zoom > 1.1f -> "长焦"
+                    else -> "主摄"
+                },
+                color = CamColors.SecondaryText,
+                style = CamType.BodyMedium,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(CamColors.Black.copy(alpha = 0.45f))
+                    .padding(horizontal = 14.dp, vertical = 6.dp)
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             CamIconButton(
                 icon = Icons.Outlined.AspectRatio,
                 onClick = { viewModel.cycleAspect() },
@@ -292,21 +309,213 @@ fun CameraScreen(
                 onClick = onOpenSettings,
                 contentDescription = "设置"
             )
+            }
         }
 
-        // ── 底部控制面板 (唯一玻璃层) ──
-        CamFrostedPanel(
+        // ── 底部控制区 (mola: 调色盘弹出 + 变焦行 + 快门行 + 模式栏) ──
+        Column(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
+                .fillMaxWidth()
                 .navigationBarsPadding()
+                .padding(horizontal = 16.dp, vertical = 10.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            // 行1: 调色盘(弹出层) + 变焦三摄 + 相框 实况 满血
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(CamShapes.Panel)
+                    .background(CamColors.Frosted),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                CamTextButton(
+                    text = if (overlay.lutFilterId == null) "调色盘" else "调色盘",
+                    selected = overlay.lutFilterId != null || showPalette,
+                    onClick = { showPalette = !showPalette },
+                    modifier = Modifier.padding(horizontal = 2.dp)
+                )
+                Spacer(Modifier.width(8.dp))
+                CamTextButton(
+                    text = "超广角",
+                    selected = zoom < 0.9f,
+                    onClick = { viewModel.setZoom(0.6f) },
+                    modifier = Modifier.padding(horizontal = 2.dp)
+                )
+                CamTextButton(
+                    text = "主摄",
+                    selected = zoom in 0.9f..1.1f,
+                    onClick = { viewModel.setZoom(1f) },
+                    modifier = Modifier.padding(horizontal = 2.dp)
+                )
+                CamTextButton(
+                    text = "长焦",
+                    selected = zoom > 1.1f,
+                    onClick = { viewModel.setZoom(3f) },
+                    modifier = Modifier.padding(horizontal = 2.dp)
+                )
+                Spacer(Modifier.width(6.dp))
+                CamTextButton(
+                    text = if (overlay.frameStyle == FrameStyle.NONE) "相框" else "相框 ${overlay.frameStyle.label}",
+                    selected = overlay.frameStyle != FrameStyle.NONE,
+                    onClick = { viewModel.cycleFrameStyle() },
+                    modifier = Modifier.padding(horizontal = 2.dp)
+                )
+                CamTextButton(
+                    text = "实况",
+                    selected = overlay.livePhotoMode,
+                    onClick = { viewModel.toggleLivePhoto() },
+                    modifier = Modifier.padding(horizontal = 2.dp)
+                )
+                CamTextButton(
+                    text = "满血",
+                    selected = overlay.fullResMode,
+                    onClick = { viewModel.toggleFullRes() },
+                    modifier = Modifier.padding(horizontal = 2.dp)
+                )
+            }
+
+            Spacer(Modifier.height(12.dp))
+
+            // 行2: AI 辅助 / 快门(80dp mola) / AI 摄影师
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceEvenly,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                CamTextButton(
+                    text = "AI 辅助",
+                    selected = overlay.aiAssistActive,
+                    onClick = { viewModel.toggleAiAssist() },
+                    modifier = Modifier.width(84.dp)
+                )
+                CamShutter(
+                    isRecording = isRecording,
+                    onClick = {
+                        if (isRecording) {
+                            viewModel.toggleVideo { }
+                        } else if (overlay.shootingMode == ShootingMode.VIDEO && overlay.silkFlowMode == SilkFlowMode.NONE) {
+                            viewModel.toggleVideo { }
+                        } else {
+                            viewModel.manualShutter()
+                        }
+                    },
+                    holdMode = overlay.shootingMode == ShootingMode.VIDEO && overlay.silkFlowMode != SilkFlowMode.NONE,
+                    onHoldStart = { viewModel.startSilkFlow() },
+                    onHoldEnd = { viewModel.stopSilkFlow() },
+                    video = overlay.shootingMode == ShootingMode.VIDEO,
+                    modifier = Modifier.size(80.dp)
+                )
+                CamTextButton(
+                    text = if (overlay.aiPhase != AiPhase.IDLE) "AI 摄影师…" else "AI 摄影师",
+                    selected = overlay.aiPhase != AiPhase.IDLE,
+                    onClick = {
+                        showAiDialog = true
+                        viewModel.openAiPhotographer()
+                    },
+                    modifier = Modifier.width(96.dp)
+                )
+            }
+
+            Spacer(Modifier.height(10.dp))
+
+            // 行3: 模式栏 (mola: 照片/视频/夜间 + 流光快门子模式)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                ShootingMode.entries.forEach { mode ->
+                    CamTextButton(
+                        text = if (mode == ShootingMode.VIDEO && overlay.silkFlowMode != SilkFlowMode.NONE)
+                            overlay.silkFlowMode.label else mode.label,
+                        selected = overlay.shootingMode == mode,
+                        onClick = {
+                            viewModel.selectMode(mode)
+                            viewModel.selectSilkFlow(SilkFlowMode.NONE)
+                        },
+                        modifier = Modifier.padding(horizontal = 2.dp)
+                    )
+                }
+                SilkFlowMode.entries.drop(1).forEach { sm ->
+                    CamTextButton(
+                        text = sm.label,
+                        selected = overlay.silkFlowMode == sm,
+                        onClick = { viewModel.selectSilkFlow(sm) },
+                        modifier = Modifier.padding(horizontal = 2.dp)
+                    )
+                }
+            }
+
+            // 引导步骤条
+            if (overlay.guideSteps.isNotEmpty()) {
+                Spacer(Modifier.height(10.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    overlay.guideSteps.forEach { step ->
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                modifier = Modifier
+                                    .size(8.dp)
+                                    .clip(CircleShape)
+                                    .background(
+                                        when {
+                                            step.done -> CamColors.Success
+                                            step.index == overlay.guideSteps.firstOrNull { !it.done }?.index -> CamColors.Accent
+                                            else -> CamColors.White.copy(alpha = 0.4f)
+                                        }
+                                    )
+                            )
+                            Spacer(Modifier.width(6.dp))
+                            Text(
+                                text = step.title,
+                                color = if (step.done) CamColors.Success else CamColors.White,
+                                style = CamType.Caption,
+                                maxLines = 1
+                            )
+                            if (step.index < overlay.guideSteps.lastIndex) {
+                                Spacer(Modifier.width(10.dp))
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // ── 调色盘弹出覆盖层 (滤镜面板, mola 调色盘) ──
+        AnimatedVisibility(
+            visible = showPalette,
+            enter = slideInVertically { it } + fadeIn(),
+            exit = slideOutVertically { it } + fadeOut(),
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
         ) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
+                    .clip(RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp))
+                    .background(CamColors.Surface.copy(alpha = 0.96f))
+                    .navigationBarsPadding()
+                    .padding(horizontal = 12.dp, vertical = 12.dp)
             ) {
-                // 行1: mola LUT 调色盘(分类条 + 封面轮)
+                // 标题行: 调色盘 + 关闭
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("调色盘", color = CamColors.Accent, style = CamType.ScreenTitle)
+                    TextButton(onClick = { showPalette = false }) {
+                        Text("关闭", color = CamColors.AccentStrong)
+                    }
+                }
                 LutFilterWheel(
                     selected = overlay.lutFilterId,
                     onSelect = { viewModel.selectLutFilter(it) },
@@ -316,165 +525,14 @@ fun CameraScreen(
                     onToggleFavorite = { viewModel.toggleFavoriteLut(it) },
                     modifier = Modifier.fillMaxWidth()
                 )
-
-                Spacer(Modifier.height(10.dp))
-
-                // 行2: 变焦(三摄) / 相框
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.Center,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    CamTextButton(
-                        text = "超广角",
-                        selected = zoom < 0.9f,
-                        onClick = { viewModel.setZoom(0.6f) },
-                        modifier = Modifier.padding(horizontal = 4.dp)
-                    )
-                    CamTextButton(
-                        text = "主摄",
-                        selected = zoom in 0.9f..1.1f,
-                        onClick = { viewModel.setZoom(1f) },
-                        modifier = Modifier.padding(horizontal = 4.dp)
-                    )
-                    CamTextButton(
-                        text = "长焦",
-                        selected = zoom > 1.1f,
-                        onClick = { viewModel.setZoom(3f) },
-                        modifier = Modifier.padding(horizontal = 4.dp)
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    CamTextButton(
-                        text = if (overlay.frameStyle == FrameStyle.NONE) "相框" else "相框 ${overlay.frameStyle.label}",
-                        selected = overlay.frameStyle != FrameStyle.NONE,
-                        onClick = { viewModel.cycleFrameStyle() },
-                        modifier = Modifier.padding(horizontal = 4.dp)
-                    )
-                    // mola 实况照片 / 满血像素 开关
-                    CamTextButton(
-                        text = "实况",
-                        selected = overlay.livePhotoMode,
-                        onClick = { viewModel.toggleLivePhoto() },
-                        modifier = Modifier.padding(horizontal = 4.dp)
-                    )
-                    CamTextButton(
-                        text = "满血",
-                        selected = overlay.fullResMode,
-                        onClick = { viewModel.toggleFullRes() },
-                        modifier = Modifier.padding(horizontal = 4.dp)
-                    )
-                }
-
-                Spacer(Modifier.height(14.dp))
-
-                // 行3: AI 辅助 / 快门 / AI 摄影师 / 相册
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceEvenly,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    CamTextButton(
-                        text = "AI 辅助",
-                        selected = overlay.aiAssistActive,
-                        onClick = { viewModel.toggleAiAssist() },
-                        modifier = Modifier.width(84.dp)
-                    )
-                    CamShutter(
-                        isRecording = isRecording,
-                        onClick = {
-                            if (isRecording) {
-                                viewModel.toggleVideo { }
-                            } else if (overlay.shootingMode == ShootingMode.VIDEO && overlay.silkFlowMode == SilkFlowMode.NONE) {
-                                viewModel.toggleVideo { }
-                            } else {
-                                viewModel.manualShutter()
-                            }
-                        },
-                        holdMode = overlay.shootingMode == ShootingMode.VIDEO && overlay.silkFlowMode != SilkFlowMode.NONE,
-                        onHoldStart = { viewModel.startSilkFlow() },
-                        onHoldEnd = { viewModel.stopSilkFlow() },
-                        modifier = Modifier.size(76.dp)
-                    )
-                    CamTextButton(
-                        text = if (overlay.aiPhase != AiPhase.IDLE) "AI 摄影师…" else "AI 摄影师",
-                        selected = overlay.aiPhase != AiPhase.IDLE,
-                        onClick = {
-                            showAiDialog = true
-                            viewModel.openAiPhotographer()
-                        },
-                        modifier = Modifier.width(96.dp)
-                    )
-                }
-
-                Spacer(Modifier.height(10.dp))
-
-                // 行4: 模式栏 (mola: 照片/视频/夜间 + 流光快门子模式)
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    ShootingMode.entries.forEach { mode ->
-                        CamTextButton(
-                            text = if (mode == ShootingMode.VIDEO && overlay.silkFlowMode != SilkFlowMode.NONE)
-                                overlay.silkFlowMode.label else mode.label,
-                            selected = overlay.shootingMode == mode,
-                            onClick = {
-                                viewModel.selectMode(mode)
-                                viewModel.selectSilkFlow(SilkFlowMode.NONE)
-                            },
-                            modifier = Modifier.padding(horizontal = 2.dp)
-                        )
-                    }
-                    // 流光快门子模式
-                    SilkFlowMode.entries.drop(1).forEach { sm ->
-                        CamTextButton(
-                            text = sm.label,
-                            selected = overlay.silkFlowMode == sm,
-                            onClick = { viewModel.selectSilkFlow(sm) },
-                            modifier = Modifier.padding(horizontal = 2.dp)
-                        )
-                    }
-                }
-
-                // 引导步骤条
-                if (overlay.guideSteps.isNotEmpty()) {
-                    Spacer(Modifier.height(10.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.Center,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        overlay.guideSteps.forEach { step ->
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(8.dp)
-                                        .clip(CircleShape)
-                                        .background(
-                                            when {
-                                                step.done -> CamColors.Success
-                                                step.index == overlay.guideSteps.firstOrNull { !it.done }?.index -> CamColors.Accent
-                                                else -> CamColors.White.copy(alpha = 0.4f)
-                                            }
-                                        )
-                                )
-                                Spacer(Modifier.width(6.dp))
-                                Text(
-                                    text = step.title,
-                                    color = if (step.done) CamColors.Success else CamColors.White,
-                                    style = CamType.Caption,
-                                    maxLines = 1
-                                )
-                                if (step.index < overlay.guideSteps.lastIndex) {
-                                    Spacer(Modifier.width(10.dp))
-                                }
-                            }
-                        }
-                    }
-                }
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "长按滤镜封面即可收藏",
+                    color = CamColors.TertiaryText,
+                    style = CamType.Caption,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth()
+                )
             }
         }
 
