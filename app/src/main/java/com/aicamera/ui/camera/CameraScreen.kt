@@ -247,7 +247,7 @@ fun CameraScreen(
             )
         }
 
-        // ── 相机错误提示 (无权限/初始化失败/绑定失败) ──
+        // ── 相机错误提示 (mola rj0.java:540-700: 需要相机权限才能拍摄 15sp 白80% + 授权相机按钮) ──
         val camError by viewModel.errorMessage.collectAsState()
         if (camError != null) {
             Column(
@@ -258,21 +258,24 @@ fun CameraScreen(
             ) {
                 Text(
                     text = camError ?: "",
-                    color = CamColors.Error,
-                    style = CamType.BodyMedium,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(14.dp))
-                        .background(CamColors.Black.copy(alpha = 0.85f))
-                        .border(1.dp, CamColors.Error.copy(alpha = 0.5f), RoundedCornerShape(14.dp))
-                        .padding(horizontal = 20.dp, vertical = 14.dp)
+                    color = Color.White.copy(alpha = 0.8f),
+                    style = CamType.Body,
+                    textAlign = TextAlign.Center
                 )
                 Spacer(Modifier.height(12.dp))
-                CamButton(
-                    text = "重新尝试",
-                    onClick = { viewModel.bindCamera(lifecycleOwner) },
-                    modifier = Modifier
-                )
+                if (camError == "需要相机权限才能拍摄") {
+                    CamButton(
+                        text = "授权相机",
+                        onClick = { permLauncher.launch(Manifest.permission.CAMERA) },
+                        modifier = Modifier
+                    )
+                } else {
+                    CamButton(
+                        text = "重新尝试",
+                        onClick = { viewModel.bindCamera(lifecycleOwner) },
+                        modifier = Modifier
+                    )
+                }
             }
         }
 

@@ -102,7 +102,7 @@ class CameraManager(
 
     fun start() {
         if (!hasCameraPermission()) {
-            _errorMessage.value = "没有相机权限"
+            _errorMessage.value = "需要相机权限才能拍摄"
             return
         }
         orientationListener.enable()
