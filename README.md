@@ -60,7 +60,7 @@ APK 输出：`app/build/outputs/apk/debug/app-debug.apk`
 
 最新 Release（镜像加速下载）：
 ```text
-https://ghfast.top/https://github.com/byxumi/AIComposeCamera/releases/download/v6.1.1/app-debug.apk
+https://ghfast.top/https://github.com/byxumi/AIComposeCamera/releases/download/v6.2.0/app-debug.apk
 ```
 
 ## 📁 结构
@@ -97,4 +97,4 @@ app/src/main/java/com/aicamera/
 - 全部检测与构图分析**本地离线**，无需联网、无需 API key（云端 AiProvider 接口已预留）
 - 参考项目：ai-composition-assistant、clifftseng/AI-Camera、compose-ai、CameraQ、mola（产品形态）
 - 真机兼容性：CameraX 已封装，适配主流机型（已在 vivo V2329A 目标机型验证）
-- 版本历史：v2.0 功能闭环 → v2.1 iOS 二改 → v2.2 mola 复刻 → v2.3 重构闭环 → v3.0 全面重写 → v4.0 taste 重构 → v5.0 mola UI + Doka 编辑器 + 可用性修复 → v5.1 直接逆向 mola 一比一复刻（151 LUT/黑金/流光/实况/满血）→ v5.2 + 收藏/AI 推荐滤镜/会员对话框/AI 摄影师三方案 → **v6.0 主界面逐元素一比一重建（底栏/快门/镜头标识/调色盘/模式渐变）** → **v6.0.1 顶部会员按钮 + 调色盘模式感知提示** → **v6.1 主界面彻底精简对齐 mola 真实控件集（移除自创按钮，消除杂乱）** → **v6.1.1 镜头标识阈值 0.95/1.8 + 按住流光快门收缩动画（源码级 rj0 参数）**
+- 版本历史：v2.0 功能闭环 → v2.1 iOS 二改 → v2.2 mola 复刻 → v2.3 重构闭环 → v3.0 全面重写 → v4.0 taste 重构 → v5.0 mola UI + Doka 编辑器 + 可用性修复 → v5.1 直接逆向 mola 一比一复刻（151 LUT/黑金/流光/实况/满血）→ v5.2 + 收藏/AI 推荐滤镜/会员对话框/AI 摄影师三方案 → **v6.0 主界面逐元素一比一重建（底栏/快门/镜头标识/调色盘/模式渐变）** → **v6.0.1 顶部会员按钮 + 调色盘模式感知提示** → **v6.1 主界面彻底精简对齐 mola 真实控件集（移除自创按钮，消除杂乱）** → **v6.1.1 镜头标识阈值 0.95/1.8 + 按住流光快门收缩动画（源码级 rj0 参数）** → **v6.2.0 顶部会员按钮误判修正（变焦倍数胶囊 %.1f× + 切换文字按钮）+ 模式栏只留 mola 三模式，全按钮图标 13dp+文字 12sp**
