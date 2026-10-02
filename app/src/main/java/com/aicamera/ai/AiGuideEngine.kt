@@ -1,68 +1,46 @@
-package com.aicamera.composition
+package com.aicamera.ai
 
 import android.graphics.RectF
+import com.aicamera.domain.model.AiTarget
+import com.aicamera.domain.model.DetectedSubject
+import com.aicamera.domain.model.GuideStep
+import com.aicamera.domain.model.ShootingMode
 import kotlin.math.abs
+import kotlin.math.sqrt
 
 /**
- * AI 引导引擎（一比一复刻 mola「AI 摄影师」核心逻辑）：
- * - 根据拍摄模式生成构图目标（目标圆圈）
- * - 计算主体到目标圈的偏移，产出移动方向
- * - 判定是否"已对准"（构图达标）
- * - 生成分步引导步骤
+ * AI 构图引导引擎（本地规则）：
+ * - 目标圆圈计算（跟随主体）
+ * - 达标判定（主体中心距目标 < 阈值）
+ * - 分步引导步骤
+ * - 手动选主体
  */
 object AiGuideEngine {
 
-    /** 主体中心到目标圆心的距离阈值（归一化），小于此值视为已对准 */
     private const val REACH_DISTANCE = 0.08f
 
-    /**
-     * 为当前模式计算目标位置（归一化 0..1）。
-     * 参考 mola「AI 构图引导，主体放在最好的位置」。
-     */
+    /** 为当前模式计算目标位置（归一化 0..1） */
     fun computeTarget(mode: ShootingMode, subjectBox: RectF?): Pair<Float, Float> {
         if (subjectBox == null) {
-            // 无主体：默认目标为三分点（左上）
             return when (mode) {
                 ShootingMode.PORTRAIT -> 1f / 3f to 1f / 3f
                 else -> 1f / 3f to 2f / 3f
             }
         }
-        val cx = (subjectBox.left + subjectBox.right) / 2f
-        val cy = (subjectBox.top + subjectBox.bottom) / 2f
         return when (mode) {
-            ShootingMode.PORTRAIT, ShootingMode.NIGHT -> {
-                // 人像/夜景：脸在右上三分点，主体中部偏上
-                val tx = 2f / 3f
-                val ty = 1f / 3f
-                tx to ty
-            }
-            ShootingMode.FOOD -> {
-                // 美食：居中偏上
-                0.5f to 0.42f
-            }
-            ShootingMode.LANDSCAPE -> {
-                // 风景：地平线在下三分之一，主体偏左或居中
-                0.5f to 1f / 3f
-            }
-            ShootingMode.VIDEO -> {
-                // 视频：居中
-                0.5f to 0.5f
-            }
+            ShootingMode.PORTRAIT, ShootingMode.NIGHT -> 2f / 3f to 1f / 3f
+            ShootingMode.FOOD -> 0.5f to 0.42f
+            ShootingMode.LANDSCAPE -> 0.5f to 1f / 3f
+            ShootingMode.VIDEO -> 0.5f to 0.5f
             else -> {
-                // 自动：最近三分点
+                val cx = (subjectBox.left + subjectBox.right) / 2f
                 val tx = if (abs(cx - 1f / 3f) <= abs(cx - 2f / 3f)) 1f / 3f else 2f / 3f
-                tx to cy
+                tx to 2f / 3f
             }
         }
     }
 
-    /**
-     * 计算 AI 目标圆圈（含移动方向与是否已对准）。
-     * @param mode 拍摄模式
-     * @param subjectBox 当前检测到的主体框（可为空）
-     * @param frameWidth 预览宽度（px，用于半径换算）
-     * @param frameHeight 预览高度
-     */
+    /** 创建目标圆圈 */
     fun createTarget(
         mode: ShootingMode,
         subjectBox: RectF?,
@@ -76,9 +54,8 @@ object AiGuideEngine {
         val moveX = if (sx == null) 0f else ((tx - sx) * 2f).coerceIn(-1f, 1f)
         val moveY = if (sy == null) -0.3f else ((ty - sy) * 2f).coerceIn(-1f, 1f)
 
-        // 没有主体时引导"寻找主体"（向下看），有主体时判断是否到位
         val distance = if (sx != null && sy != null) {
-            kotlin.math.sqrt((tx - sx) * (tx - sx) + (ty - sy) * (ty - sy))
+            sqrt((tx - sx) * (tx - sx) + (ty - sy) * (ty - sy))
         } else Float.MAX_VALUE
 
         val reached = distance <= REACH_DISTANCE
@@ -100,10 +77,7 @@ object AiGuideEngine {
         )
     }
 
-    /**
-     * 生成 AI 分步引导（mola「AI 推荐的引导步骤」）。
-     * 根据模式和当前主体生成 3 步：找主体 → 构图 → 拍摄。
-     */
+    /** 生成分步引导 */
     fun buildGuideSteps(mode: ShootingMode, hasSubject: Boolean, target: AiTarget): List<GuideStep> {
         return listOf(
             GuideStep(
@@ -131,7 +105,7 @@ object AiGuideEngine {
         )
     }
 
-    /** 评估主体是否被 AI 框错（用户点击手动选主体后更新） */
+    /** 点选主体 */
     fun pickAtPoint(subjects: List<DetectedSubject>, x: Float, y: Float): DetectedSubject? {
         return subjects.minByOrNull { s ->
             val cx = (s.box.left + s.box.right) / 2f
@@ -140,7 +114,7 @@ object AiGuideEngine {
         }
     }
 
-    /** 个性化拍摄方案文案（mola 风格：用户输入意图 → AI 定制方案） */
+    /** 生成拍摄方案文案 */
     fun buildPlanText(mode: ShootingMode, prompt: String): String {
         val base = when (mode) {
             ShootingMode.PORTRAIT -> "人像写真方案：脸部放右上三分点，浅景深突出主体，自然光更佳。"
@@ -150,8 +124,6 @@ object AiGuideEngine {
             ShootingMode.VIDEO -> "视频方案：主体居中，保持水平，缓慢运镜。"
             else -> "经典构图方案：主体对准三分点，保持水平，光线柔和。"
         }
-        return if (prompt.isNotBlank()) {
-            "针对「$prompt」→ $base"
-        } else base
+        return if (prompt.isNotBlank()) "针对「$prompt」→ $base" else base
     }
 }

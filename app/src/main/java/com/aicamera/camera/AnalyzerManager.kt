@@ -5,11 +5,11 @@ import android.graphics.Bitmap
 import android.graphics.Rect
 import android.graphics.RectF
 import androidx.camera.core.ImageProxy
-import com.aicamera.composition.AnalysisResult
-import com.aicamera.composition.DetectedSubject
-import com.aicamera.composition.FaceFeatures
-import com.aicamera.composition.PoseLimb
-import com.aicamera.composition.SubjectKind
+import com.aicamera.domain.model.AnalysisResult
+import com.aicamera.domain.model.DetectedSubject
+import com.aicamera.domain.model.FaceFeatures
+import com.aicamera.domain.model.PoseLimb
+import com.aicamera.domain.model.SubjectKind
 import com.google.mediapipe.framework.image.BitmapImageBuilder
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.face.FaceDetection

@@ -7,6 +7,12 @@
 
     <uses-permission android:name="android.permission.CAMERA" />
 
+    <!-- 相册读取 (API 33+ / 旧版) -->
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
+    <!-- 视频录制音频 -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+
     <application
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"
