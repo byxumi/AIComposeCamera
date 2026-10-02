@@ -90,6 +90,8 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
 
     private val _lastSavedUri = MutableStateFlow<String?>(null)
     val lastSavedUri: StateFlow<String?> = _lastSavedUri.asStateFlow()
+    private val _errorMessage = MutableStateFlow<String?>(null)
+    val errorMessage: StateFlow<String?> = _errorMessage.asStateFlow()
 
     // 传感器
     private var sensorManager: SensorManager? = null
@@ -109,9 +111,17 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun bindCamera(lifecycleOwner: androidx.lifecycle.LifecycleOwner) {
-        if (cameraBound) return
-        cameraBound = true
         val ctx = getApplication<Application>()
+        if (cameraBound) {
+            // 已绑定(通常因权限回调再次进入): 重设预览并确保会话已启动
+            pendingPreview?.let { (provider, pv) ->
+                cameraManager?.setPreviewSurfaceProvider(provider, pv)
+                pendingPreview = null
+            }
+            cameraManager?.start() // start 内部有权限检查, 无权限自行 return, 幂等安全
+            return
+        }
+        cameraBound = true
         val mgr = CameraManager(ctx, lifecycleOwner)
         cameraManager = mgr
         analyzerManager = AnalyzerManager(ctx, _settings.value.poseGuidance)
@@ -121,7 +131,12 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
         }
         viewModelScope.launch {
             mgr.isCameraReady.collect { ready -> _cameraReady.value = ready }
+        }
+        viewModelScope.launch {
             mgr.isRecording.collect { r -> _isRecording.value = r }
+        }
+        viewModelScope.launch {
+            mgr.errorMessage.collect { msg -> _errorMessage.value = msg }
         }
         mgr.start()
         pendingPreview?.let { (provider, pv) ->
@@ -424,6 +439,12 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
             0 -> 3; 3 -> 5; 5 -> 10; else -> 0
         }
         _toastMessage.value = if (currentTimer > 0) "定时：${currentTimer}秒" else "定时：关"
+    }
+
+    /** 曝光小太阳（mola）：±1/3 EV 步进 */
+    fun adjustExposure(delta: Int) {
+        currentExposure = cameraManager?.setExposureCompensation(delta)?.toFloat() ?: 0f
+        _toastMessage.value = if (currentExposure == 0f) "曝光：自动" else "曝光：+${currentExposure.toInt()} EV"
     }
 
     fun cycleFrameStyle() {

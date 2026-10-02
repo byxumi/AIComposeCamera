@@ -184,6 +184,17 @@ class CameraManager(
         c.cameraControl.setZoomRatio(zoomRatio)
     }
 
+    /** 曝光补偿（mola 小太阳）：按 1/3 EV 步进，返回实际生效值 */
+    fun setExposureCompensation(deltaSteps: Int): Int {
+        val c = camera ?: return 0
+        val state = c.cameraInfo.exposureState
+        val range = state.exposureCompensationRange
+        if (range.lower == 0 && range.upper == 0) return 0 // 不支持曝光补偿
+        val target = (state.exposureCompensationIndex + deltaSteps).coerceIn(range.lower, range.upper)
+        c.cameraControl.setExposureCompensationIndex(target)
+        return target
+    }
+
     fun focusAt(previewView: PreviewView, x: Float, y: Float) {
         val c = camera ?: return
         val factory: MeteringPointFactory = previewView.meteringPointFactory

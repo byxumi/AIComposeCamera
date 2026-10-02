@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -30,9 +31,11 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.BrightnessHigh
 import androidx.compose.material.icons.filled.Cameraswitch
 import androidx.compose.material.icons.filled.Face
 import androidx.compose.material.icons.filled.FlashAuto
@@ -40,6 +43,7 @@ import androidx.compose.material.icons.filled.FlashOff
 import androidx.compose.material.icons.filled.FlashOn
 import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material.icons.outlined.AspectRatio
 import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedTextField
@@ -199,7 +203,36 @@ fun CameraScreen(
             )
         }
 
-        // ── 顶部工具栏: 设置 / 画幅 / 闪光 / 切换摄 ──
+        // ── 相机错误提示 (无权限/初始化失败/绑定失败) ──
+        val camError by viewModel.errorMessage.collectAsState()
+        if (camError != null) {
+            Column(
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .padding(horizontal = 40.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    text = camError ?: "",
+                    color = CamColors.Error,
+                    style = CamType.BodyMedium,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(CamColors.Black.copy(alpha = 0.85f))
+                        .border(1.dp, CamColors.Error.copy(alpha = 0.5f), RoundedCornerShape(14.dp))
+                        .padding(horizontal = 20.dp, vertical = 14.dp)
+                )
+                Spacer(Modifier.height(12.dp))
+                CamButton(
+                    text = "重新尝试",
+                    onClick = { viewModel.bindCamera(lifecycleOwner) },
+                    modifier = Modifier
+                )
+            }
+        }
+
+        // ── 顶部工具栏 (mola 顺序): 画幅 / 闪光 / 定时 / 曝光 / 切换 / 设置 ──
         Row(
             modifier = Modifier
                 .align(Alignment.TopCenter)
@@ -209,11 +242,6 @@ fun CameraScreen(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            CamIconButton(
-                icon = Icons.Filled.Settings,
-                onClick = onOpenSettings,
-                contentDescription = "设置"
-            )
             CamIconButton(
                 icon = Icons.Outlined.AspectRatio,
                 onClick = { viewModel.cycleAspect() },
@@ -229,9 +257,24 @@ fun CameraScreen(
                 contentDescription = "闪光 ${overlay.flashState.label}"
             )
             CamIconButton(
+                icon = Icons.Filled.Timer,
+                onClick = { viewModel.cycleTimer() },
+                contentDescription = "定时 ${overlay.timerSeconds}秒"
+            )
+            CamIconButton(
+                icon = Icons.Filled.BrightnessHigh,
+                onClick = { viewModel.adjustExposure(1) },
+                contentDescription = "曝光"
+            )
+            CamIconButton(
                 icon = Icons.Filled.Cameraswitch,
                 onClick = { viewModel.switchCamera() },
                 contentDescription = "切换摄像头"
+            )
+            CamIconButton(
+                icon = Icons.Filled.Settings,
+                onClick = onOpenSettings,
+                contentDescription = "设置"
             )
         }
 
@@ -263,7 +306,7 @@ fun CameraScreen(
 
                 Spacer(Modifier.height(10.dp))
 
-                // 行2: 变焦 / 定时 / 相框
+                // 行2: 变焦 / 相框
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.Center,
@@ -288,12 +331,6 @@ fun CameraScreen(
                         modifier = Modifier.padding(horizontal = 4.dp)
                     )
                     Spacer(Modifier.width(8.dp))
-                    CamTextButton(
-                        text = if (overlay.timerSeconds > 0) "定时 ${overlay.timerSeconds}s" else "定时",
-                        selected = overlay.timerSeconds > 0,
-                        onClick = { viewModel.cycleTimer() },
-                        modifier = Modifier.padding(horizontal = 4.dp)
-                    )
                     CamTextButton(
                         text = "相框 ${overlay.frameStyle.label.removePrefix("相框")}",
                         selected = overlay.frameStyle != FrameStyle.NONE,
