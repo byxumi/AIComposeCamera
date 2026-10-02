@@ -12,8 +12,8 @@ android {
         applicationId = "com.aicamera"
         minSdk = 26
         targetSdk = 35
-        versionCode = 15
-        versionName = "6.3.1"
+        versionCode = 16
+        versionName = "6.3.2"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {

@@ -79,6 +79,7 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
     private var aiAssistActive = false
     private var aiPhase = AiPhase.IDLE
     private var aiPromptText = ""
+    private var readyShootJob: Job? = null
     /** mola 固定方案步骤(ay0); 为空时退回 buildPlanText */
     private var aiGuideSteps: List<MolaPlanStep> = emptyList()
     private var lockedSubjectId: Int? = null
@@ -263,12 +264,19 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
             aiGuide.createTarget(currentMode, primary.box, 1080f, 1920f)
         } else null
 
-        // 对准 → 自动拍（仅一次）
+        // 对准 → 自动拍（mola rj0.java:1589: "构图已就绪，约 3 秒后快门自动释放"，3 秒倒计时）
         if (aiAssistActive && aiTarget != null && aiTarget.reached && !aiReachedFired) {
             aiReachedFired = true
             aiPhase = AiPhase.READY_SHOOT
-            _toastMessage.value = "✓ 构图很棒，自动拍摄！"
-            takePhoto(auto = true)
+            _toastMessage.value = "构图已就绪，约 3 秒后快门自动释放"
+            readyShootJob?.cancel()
+            readyShootJob = viewModelScope.launch {
+                delay(3000)
+                if (aiPhase == AiPhase.READY_SHOOT && aiTarget.reached) {
+                    _toastMessage.value = "✓ 构图很棒，自动拍摄！"
+                    takePhoto(auto = true)
+                }
+            }
         }
         if (aiTarget == null || !aiTarget.reached) aiReachedFired = false
 
@@ -597,6 +605,8 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun closeAiPhotographer() {
+        readyShootJob?.cancel()
+        readyShootJob = null
         aiPhase = AiPhase.IDLE
         aiAssistActive = false
         aiGuideSteps = emptyList()
@@ -733,6 +743,8 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
         val lutId = currentLutFilter
         var saved: Boolean
         if (lutId != null) {
+            // mola rj0.java:1301 "AI 正在智能调色": LUT 应用状态提示
+            _toastMessage.value = "✨ AI 正在智能调色"
             saved = viewModelScope.let { scope ->
                 kotlinx.coroutines.runBlocking {
                     val lut = findLut(lutId)
